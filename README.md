@@ -49,6 +49,7 @@ js/card-art.js         カード画像ローダー
 js/games/index.js      ゲーム登録所
 js/games/count-cards/  COUNT CARDS（cards.js 定義 / rules.js ルール / view.js 表示）
 js/games/liar-dice/    LIAR'S DICE（rules.js ルール / view.js 表示）
+js/games/sprint-brain/  SPRINT BRAIN（rules.js 問題生成・判定 / view.js モニター・各問題UI）
 ```
 
 ## 新しいゲームの追加方法
@@ -62,6 +63,7 @@ js/games/liar-dice/    LIAR'S DICE（rules.js ルール / view.js 表示）
 - `startRound(m)` … ラウンド開始。状態は `m.sub` に置く
 - `applyAction(m, uid, action)` … 不正なら throw。敗者が決まったら `m.loser = { uid, reason, text, times }`（times＝引き金を引く回数）
 - ラウンドをまたいで残したい状態は `m.gs` に置く（例：LIAR'S DICE の各自のダイス数）
+- 全員同時に動くゲームは `currentActor` で null を返し、`pendingAuto(m, now)` / `applyAuto` でCPUの行動や時間切れをホスト役に実行させる（SPRINT BRAIN 参照）。時刻は match.js の `now()`（サーバー時刻補正済み）を使う
 - `currentActor(m)` … 入力待ちのプレイヤー
 - `cpuAction(m, uid)` … CPU/切断者の代打ち
 - `describeEvent(ev, name)` … ログ用の文章
@@ -98,3 +100,10 @@ export const firebaseConfig = {
 - 次ラウンドは前ラウンドの敗者から開始（死亡していれば次の席の人）。宣言の順番は常に正順
 - 個数の上限は場のダイス合計数。これ以上レイズできない時はブラフのみ
 - 振りなおしは最初の宣言時にも使える
+
+## SPRINT BRAIN 仕様メモ
+
+- 問題・答えはランダム生成。CPUは出題形式ごとの目安時間でランダムに解答（たまに不正解）
+- 制限時間（デフォルト90秒）を設定に追加。時間切れの場合は未正解者からランダムに1人が敗者
+- Quick Math はカード4枚。数字→記号→数字で計算し、結果は後に押したカードの位置に出る。小数第1位まで表せない数は分数表記
+- 観戦者・死亡者も問題画面を（操作なしで）見られる
