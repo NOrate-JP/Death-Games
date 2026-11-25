@@ -2,6 +2,10 @@
 // ラウンド → 敗者決定(警報) → 敗者が自分のタイミングで撃つ → 結果 → 次ラウンド / 決着
 import { DAMAGE_MODES } from './damage.js';
 
+// 時計（オンライン時はサーバー時刻に補正したものを app が差し込む）
+export let now = () => Date.now();
+export function setClock(fn) { now = fn; }
+
 let RULES = null; // games/index.js から注入（循環importを避けるため）
 export function bindRules(getter) { RULES = getter; }
 

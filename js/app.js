@@ -1,6 +1,6 @@
 // Death Games : 画面遷移・ロビー・試合同期
 import { GAMES, COMING_SOON, getRules, defaultGameOptions } from './games/index.js';
-import { createMatch, applyAction, advance, currentActor, statusText, aliveList, clampSurvivors } from './match.js';
+import { createMatch, applyAction, advance, currentActor, statusText, aliveList, clampSurvivors, setClock } from './match.js';
 import { DAMAGE_MODES, COMMON_PENALTY_OPTIONS, defaultDamageSettings } from './damage.js';
 import { preloadCards, cardCanvas } from './card-art.js';
 import { CARD_DEFS as CC_DEFS } from './games/count-cards/cards.js';
@@ -115,6 +115,7 @@ const App = {
 
   async attach(room, name, role) {
     this.room = room; this.uid = room.uid;
+    setClock(() => room.now());
     this.data = null;
     room.subscribe((d) => this.onRoom(d));
     // 最初のスナップショットを待ってから自分を登録
@@ -287,6 +288,7 @@ const App = {
       send: (a) => this.sendAction(a), banner: (t, s, ms, cls) => this.banner(t, s, ms, cls),
       popText: (t, cls) => this.popText(t, cls), choose: (t, o) => this.choose(t, o),
       reveal: (o) => this.reveal(o),
+      now: () => this.room.now(),
     });
     $('#hudGame').textContent = getRules(m.gameId).meta.name;
     $('#hudMode').textContent = DAMAGE_MODES[m.dmg.mode].name + (m.dmg.survivors > 1 ? `　／　生存枠 ${m.dmg.survivors}人` : '');
@@ -307,6 +309,7 @@ const App = {
   },
 
   teardownGame() {
+    clearTimeout(this._autoT);
     this.view?.dispose(); this.view = null;
     this.scene?.dispose(); this.scene = null;
     this.match = null; this.queue = []; this.busy = false;
@@ -515,6 +518,7 @@ const App = {
       $('#shootBtn').disabled = false;
       this.afterIdle();
     }
+    return ok;
   },
 
   // ホスト役（最古の接続中プレイヤー）がCPU・切断者・進行を担当
@@ -528,6 +532,8 @@ const App = {
       return;
     }
     if (m.phase !== 'round' && m.phase !== 'loser') return;
+    const rules = getRules(m.gameId);
+    if (m.phase === 'round' && rules.pendingAuto) return this.driveAuto();
     const a = currentActor(m); if (!a) return;
     const mem = this.data?.members?.[a];
     const offline = !mem || mem.online === false;
@@ -546,6 +552,32 @@ const App = {
         return mm;
       }).then((ok) => { if (!ok) { this.driverKey = null; setTimeout(() => this.afterIdle(), 500); } });
     }, delay);
+  },
+
+  // 全員同時型のゲーム：CPUの解答や時間切れなど、時刻で起きる処理
+  driveAuto() {
+    clearTimeout(this._autoT);
+    const tick = () => {
+      const m = this.match;
+      if (!m || m.phase !== 'round' || this.driverUid() !== this.uid) return;
+      const rules = getRules(m.gameId);
+      const { due, nextAt } = rules.pendingAuto(m, this.room.now());
+      if (!due.length) { if (nextAt) this._autoT = setTimeout(tick, Math.max(60, nextAt - this.room.now())); return; }
+      if (this._autoBusy) return;
+      this._autoBusy = true;
+      this.room.transactGame((mm) => {
+        if (mm.phase !== 'round') return;
+        const r = rules.pendingAuto(mm, this.room.now());
+        if (!r.due.length) return;
+        for (const d of r.due) {
+          if (mm.phase !== 'round') break;
+          rules.applyAuto?.(mm, d);
+          try { applyAction(mm, d.uid || this.uid, d.action); } catch (e) { /* 既に終わっている等 */ }
+        }
+        return mm;
+      }).finally(() => { this._autoBusy = false; this._autoT = setTimeout(tick, 250); });
+    };
+    tick();
   },
 
   // ---------- 観戦カメラ ----------
