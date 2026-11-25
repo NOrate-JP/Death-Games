@@ -49,6 +49,23 @@ export const sfx = {
     tone({ f0: 120, f1: 30, dur: 0.6, vol: 0.9 });
   },
   heartbeat() { tone({ f0: 70, f1: 40, dur: 0.12, vol: 0.5 }); setTimeout(() => tone({ f0: 60, f1: 35, dur: 0.14, vol: 0.4 }), 180); },
+  siren(sec = 3.2) {
+    ensure();
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    const o2 = ctx.createOscillator(); o2.type = 'square';
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800;
+    const g = ctx.createGain(); const t = ctx.currentTime;
+    for (let i = 0; i < sec / 0.8; i++) {
+      o.frequency.setValueAtTime(520, t + i * 0.8); o.frequency.linearRampToValueAtTime(980, t + i * 0.8 + 0.4);
+      o.frequency.linearRampToValueAtTime(520, t + i * 0.8 + 0.8);
+    }
+    o2.frequency.value = 3; // うなり
+    const lfo = ctx.createGain(); lfo.gain.value = 0.03; o2.connect(lfo); lfo.connect(g.gain);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.16, t + 0.1);
+    g.gain.setValueAtTime(0.16, t + sec - 0.4); g.gain.linearRampToValueAtTime(0.0001, t + sec);
+    o.connect(f); f.connect(g); g.connect(master);
+    o.start(t); o2.start(t); o.stop(t + sec + 0.05); o2.stop(t + sec + 0.05);
+  },
   startDrone() {
     ensure(); if (drone) return;
     const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 41;

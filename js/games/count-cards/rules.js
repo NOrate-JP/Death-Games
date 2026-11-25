@@ -115,7 +115,7 @@ function checkTurn(m) {
 
 function lose(m, uid, reason) {
   const s = m.sub;
-  m.loser = { uid, reason };
+  m.loser = { uid, reason, text: loseReason({ reason, field: s.field, target: s.target }) };
   pushEvent(m, { t: 'cc_lose', uid, reason, field: s.field, target: s.target });
 }
 

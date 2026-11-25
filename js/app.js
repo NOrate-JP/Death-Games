@@ -1,7 +1,9 @@
 // Death Games : 画面遷移・ロビー・試合同期
 import { GAMES, COMING_SOON, getRules, defaultGameOptions } from './games/index.js';
-import { createMatch, applyAction, advance, currentActor, statusText, aliveList } from './match.js';
-import { DAMAGE_MODES, defaultDamageSettings } from './damage.js';
+import { createMatch, applyAction, advance, currentActor, statusText, aliveList, clampSurvivors } from './match.js';
+import { DAMAGE_MODES, COMMON_PENALTY_OPTIONS, defaultDamageSettings } from './damage.js';
+import { preloadCards, cardCanvas } from './card-art.js';
+import { CARD_DEFS as CC_DEFS } from './games/count-cards/cards.js';
 import { FirebaseRoom, LocalRoom, firebaseConfigured } from './net.js';
 import { TableScene } from './scene/scene.js';
 import { sfx } from './audio.js';
@@ -9,13 +11,16 @@ import { sfx } from './audio.js';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const MAX_PLAYERS = 6;
-const CPU_NAMES = ['ジャック', 'ベアトリス', 'カラス', 'ドミノ', 'ミスター・K', 'ローズ', 'ヴィクター', 'ルー'];
+const CPU_NAMES = ['ジャック', 'ベアトリス', 'カラス', 'ドミノ', 'ミスター・K', 'ローズ', 'ヴィクター', 'ルー',
+  'マダム・オウル', 'ギデオン', 'シルク', 'バロン', 'ノクターン', 'ハーレクイン', 'グレイ', 'ミモザ', 'ラッキー・ジョー',
+  'ドクター・ノーマン', 'ヴェラ', 'オスカー', 'スカーレット', 'ハンク', 'イヴ', 'ルドルフ', 'ペトラ', 'サイラス',
+  'ミセス・ホロウ', 'ジェスター', 'ファング', 'クロエ', 'ボーンズ', 'リリス', 'マックス', 'ウィドウ', 'トビー', 'ネロ'];
 
 const store = {
   get name() { return localStorage.getItem('dg_name') || ''; },
   set name(v) { localStorage.setItem('dg_name', v); },
-  get pixel() { return +(localStorage.getItem('dg_pixel') || 3); },
-  set pixel(v) { localStorage.setItem('dg_pixel', v); },
+  get pixel() { return +(localStorage.getItem('dg_pixel2') || 2); },
+  set pixel(v) { localStorage.setItem('dg_pixel2', v); },
   get muted() { return localStorage.getItem('dg_muted') === '1'; },
   set muted(v) { localStorage.setItem('dg_muted', v ? '1' : '0'); },
 };
@@ -45,7 +50,32 @@ const App = {
   show(id) {
     this.screen = id;
     document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
+    if (id === 'game') this.stopBg(); else this.startBg();
   },
+  // タイトル・ロビーの背景：テーブルの周りをゆっくり回るカメラ
+  async startBg() {
+    if (this.bg || this._bgStarting) return;
+    this._bgStarting = true;
+    try {
+      const sc = new TableScene($('#bgStage'), { pixel: store.pixel, attract: true });
+      this.bg = sc;
+      sc.setSeats(Array.from({ length: 6 }, (_, i) => ({ uid: 'bg' + i, name: '' })), null, { empty: true });
+      sc.setView({ kind: 'attract' });
+      await preloadCards('count-cards', CC_DEFS);
+      if (this.bg !== sc) return;
+      sc.setBackCanvas(cardCanvas('count-cards', 'back'));
+      const ids = Object.keys(CC_DEFS);
+      for (let i = 0; i < 11; i++) {
+        const id = ids[Math.floor(Math.random() * ids.length)];
+        const mm = sc.makeCard('count-cards:' + id, cardCanvas('count-cards', id));
+        const a = Math.random() * 6.28, r = 0.2 + Math.random() * 0.75;
+        mm.position.set(Math.cos(a) * r, 0.785 + i * 0.002, Math.sin(a) * r);
+        mm.rotation.set(-Math.PI / 2, 0, Math.random() * 6);
+        sc.scene.add(mm);
+      }
+    } finally { this._bgStarting = false; }
+  },
+  stopBg() { if (this.bg) { this.bg.dispose(); this.bg = null; } },
   myName() {
     const n = $('#nameInput').value.trim().slice(0, 12) || '名無し' + Math.floor(Math.random() * 100);
     store.name = n; return n;
@@ -104,10 +134,13 @@ const App = {
     const members = d.members || {};
     const players = Object.values(members).filter((m) => m.role === 'player');
     if (players.length >= MAX_PLAYERS) return;
-    this._cpuNames = this._cpuNames || new Set();
-    const used = new Set([...Object.values(members).map((m) => m.name), ...this._cpuNames]);
-    const nm = CPU_NAMES.find((n) => !used.has(n)) || 'CPU' + (used.size + 1);
-    this._cpuNames.add(nm);
+    // 今いるメンバーの名前と、追加処理中の名前だけを避けてランダムに命名（番号にはならない）
+    this._cpuPending = this._cpuPending || new Set();
+    const used = new Set([...Object.values(members).map((m) => m.name), ...this._cpuPending]);
+    const pool = CPU_NAMES.filter((n) => !used.has(n));
+    const nm = pool[Math.floor(Math.random() * pool.length)] || CPU_NAMES[Math.floor(Math.random() * CPU_NAMES.length)];
+    this._cpuPending.add(nm);
+    setTimeout(() => this._cpuPending.delete(nm), 3000);
     const id = 'cpu_' + Math.random().toString(36).slice(2, 8);
     await this.room.setMember(id, { name: nm, role: 'player', online: true, isCpu: true, joinedAt: Date.now() });
   },
@@ -177,7 +210,11 @@ const App = {
       <button class="dmg-tile ${dm.mode === k ? 'sel' : ''}" data-k="${k}" ${host ? '' : 'disabled'}>
         <div class="dt-name">${esc(m.name)}</div><div class="dt-desc">${esc(m.desc)}</div></button>`).join('');
     $('#dmgModes').querySelectorAll('button').forEach((b) => (b.onclick = () => this.room.updateSettings({ 'damage/mode': b.dataset.k })));
-    $('#dmgOpts').innerHTML = DAMAGE_MODES[dm.mode].options.map((o) => optRow(o, dm[o.key], host, 'd')).join('');
+    const nPlayers = Object.values(d.members || {}).filter((x) => x.role === 'player').length;
+    const survMax = Math.max(1, nPlayers - 1);
+    const common = COMMON_PENALTY_OPTIONS.map((o) => (o.key === 'survivors' ? { ...o, max: survMax } : o));
+    const dmv = { ...dm, survivors: clampSurvivors(dm.survivors, Math.max(2, nPlayers)) };
+    $('#dmgOpts').innerHTML = [...DAMAGE_MODES[dm.mode].options, ...common].map((o) => optRow(o, dmv[o.key], host, 'd')).join('');
     bindOpts($('#dmgOpts'), 'd', (k, v) => this.room.updateSettings({ [`damage/${k}`]: v }), this.room);
     // メンバー
     const ms = Object.entries(d.members || {}).sort((a, b) => a[1].joinedAt - b[1].joinedAt);
@@ -218,7 +255,7 @@ const App = {
     const names = {}, cpu = {};
     ms.forEach(([id, m]) => { names[id] = m.name; if (m.isCpu) cpu[id] = true; });
     const gameOpts = { ...defaultGameOptions(s.gameId), ...(s.gameOpts?.[s.gameId] || {}) };
-    const m = createMatch({ seats, names, cpu, gameId: s.gameId, gameOpts, damage: { ...defaultDamageSettings(), ...s.damage } });
+    const m = createMatch({ seats, names, cpu, gameId: s.gameId, gameOpts, damage: { ...defaultDamageSettings(), ...s.damage, survivors: clampSurvivors(s.damage?.survivors, seats.length) } });
     sfx.unlock();
     await this.room.setGame(m);
     await this.room.updateMeta({ status: 'playing', startedAt: Date.now() });
@@ -237,9 +274,10 @@ const App = {
   async enterGame(m) {
     this.show('game');
     sfx.startDrone();
-    this.resultShown = false; this.deadShown = false; this.queue = []; this.busy = false; this.driverKey = null;
+    this.resultShown = false; this.queue = []; this.busy = false; this.driverKey = null; this.intro = false;
     $('#result').classList.remove('on');
     $('#log').innerHTML = '';
+    this.hideShoot();
     const sc = this.scene = new TableScene($('#stage'), { pixel: store.pixel });
     const me = m.seats.includes(this.uid) ? this.uid : null;
     sc.setSeats(m.seats.map((u) => ({ uid: u, name: m.names[u] })), me);
@@ -248,15 +286,22 @@ const App = {
       scene: sc, hud: $('#gameHud'), me, name: (u) => m.names[u] || '?',
       send: (a) => this.sendAction(a), banner: (t, s, ms, cls) => this.banner(t, s, ms, cls),
       popText: (t, cls) => this.popText(t, cls), choose: (t, o) => this.choose(t, o),
+      reveal: (o) => this.reveal(o),
     });
     $('#hudGame').textContent = getRules(m.gameId).meta.name;
-    $('#hudMode').textContent = DAMAGE_MODES[m.dmg.mode].name;
+    $('#hudMode').textContent = DAMAGE_MODES[m.dmg.mode].name + (m.dmg.survivors > 1 ? `　／　生存枠 ${m.dmg.survivors}人` : '');
     this.bindGameMenu();
     const fresh = m.round === 1 && m.events[0]?.id === 1 && m.phase === 'round' && m.events.length < 60;
-    if (fresh) { this.lastEid = 0; }
-    else { this.lastEid = m.eid; this.match = m; this.view.sync(m); this.refreshSeats(m); }
     const alive = me && m.alive[me];
-    sc.setView(alive ? { kind: 'seat', uid: me } : { kind: 'overview' }, true);
+    if (fresh) {
+      // 開幕：俯瞰から自分の席へゆっくりカメラ移動 → 配札
+      this.lastEid = 0; this.intro = true;
+      sc.setView({ kind: 'overview' }, true);
+      this.introView = alive ? { kind: 'seat', uid: me } : { kind: 'overview' };
+    } else {
+      this.lastEid = m.eid; this.match = m; this.view.sync(m); this.refreshSeats(m);
+      sc.setView(alive ? { kind: 'seat', uid: me } : { kind: 'overview' }, true);
+    }
     this.renderCamBar(m);
     if (!fresh) this.afterIdle();
   },
@@ -266,6 +311,7 @@ const App = {
     this.scene?.dispose(); this.scene = null;
     this.match = null; this.queue = []; this.busy = false;
     sfx.stopDrone();
+    this.hideShoot();
     $('#game').classList.remove('exec');
     $('#result').classList.remove('on');
     $('#camBar').innerHTML = '';
@@ -285,7 +331,6 @@ const App = {
     if (m.eid < this.lastEid) { this.lastEid = 0; } // 新しい試合
     const evs = m.events.filter((e) => e.id > this.lastEid);
     if (evs.length && evs[0].id > this.lastEid + 1 && this.lastEid !== 0) {
-      // 取りこぼし → 同期のみ
       this.lastEid = m.eid; this.queue = [];
       this.view.sync(m); this.refreshSeats(m); this.afterIdle(); return;
     }
@@ -314,9 +359,10 @@ const App = {
     const m = this.match; const name = (u) => m.names[u] || '?';
     let t = null;
     if (ev.t === 'roundStart') t = `— ROUND ${ev.round} —`;
+    else if (ev.t === 'loser') t = `⚠ 敗者：${name(ev.uid)}`;
     else if (ev.t === 'execution') t = ev.hit ? `${name(ev.uid)} 被弾${ev.dmg ? `（-${ev.dmg}）` : ''}` : `${name(ev.uid)} 空砲`;
     else if (ev.t === 'death') t = `✝ ${name(ev.uid)} 死亡`;
-    else if (ev.t === 'gameOver') t = `勝者：${name(ev.winner)}`;
+    else if (ev.t === 'gameOver') t = `生存者：${(ev.winners || []).map(name).join('、')}`;
     else t = getRules(m.gameId).describeEvent(ev, name);
     if (!t) return;
     const div = document.createElement('div'); div.className = 'ln ' + ev.t; div.textContent = t;
@@ -330,11 +376,18 @@ const App = {
     switch (ev.t) {
       case 'roundStart': {
         $('#hudRound').textContent = `ROUND ${ev.round}`;
+        if (this.intro) {
+          this.intro = false;
+          this.banner(getRules(m.gameId).meta.name, `${m.seats.length}人のプレイヤー　生き残れるのは ${m.dmg.survivors}人`, 2600);
+          await sc.setView(this.introView, false, 3400);
+          await sc.wait(200);
+        }
         let sub = '';
         if (m.dmg.mode === 'roundlife') sub = `このラウンドの敗者ダメージ：${ev.round}`;
         await this.banner(`ROUND ${ev.round}`, sub, 1300);
         return;
       }
+      case 'loser': return this.animateLoser(ev);
       case 'execution': return this.animateExecution(ev);
       case 'death': return;
       case 'gameOver': return this.showResult(ev);
@@ -342,14 +395,30 @@ const App = {
     }
   },
 
+  // 敗者決定：警報 → 敗者が銃を構える（ここで本人の操作待ちになる）
+  async animateLoser(ev) {
+    const m = this.match, sc = this.scene, nm = m.names[ev.uid];
+    const isMe = ev.uid === this.uid;
+    sc.setAlarm(true);
+    sfx.siren(3.2);
+    setTimeout(() => { if (this.scene === sc && this.match?.phase === 'loser') sc.setAlarm(0.45); }, 3300);
+    for (const u of m.seats) sc.setSeatStatus(u, { active: u === ev.uid });
+    await this.banner(`${nm} の負け`, ev.text || '', 2600, 'red');
+    $('#game').classList.add('exec');
+    this.caption(isMe ? 'あなたの番だ。自分のタイミングで引き金を引け。' : `${nm} がリボルバーを手に取った…`);
+    await sc.raiseGun(ev.uid, isMe);
+  },
+
   async animateExecution(ev) {
     const m = this.match, sc = this.scene, nm = m.names[ev.uid];
     const isMe = ev.uid === this.uid;
     const revolverMode = ev.mode === 'revolver';
-    let cap = revolverMode ? `${nm} は自分のこめかみに銃口を当てた…　実弾の確率 ${Math.round(ev.prob * 100)}%` : `${nm} に銃口が向けられる…${ev.mode === 'roundlife' ? `（ダメージ ${ev.dmg}）` : ''}`;
-    this.caption(cap);
+    this.hideShoot();
     $('#game').classList.add('exec');
-    await sc.execute({
+    this.caption(revolverMode ? `実弾の確率 ${Math.round(ev.prob * 100)}%` : (ev.mode === 'roundlife' ? `ダメージ ${ev.dmg}` : ''));
+    sfx.heartbeat();
+    await sc.wait(400);
+    await sc.fire({
       uid: ev.uid, hit: ev.hit, dead: ev.dead, isMe, revolverMode,
       onDark: () => {
         let st;
@@ -365,7 +434,7 @@ const App = {
       if (isMe) {
         await sc.wait(1200);
         $('#youDied').classList.remove('on');
-        sc.setView({ kind: 'overview' });
+        sc.setView({ kind: 'overview' }, false, 1200);
         this.view.setInput(false, m);
         this.renderCamBar(m, true);
       }
@@ -375,6 +444,25 @@ const App = {
     } else {
       await this.banner('空砲', `${nm} は生き延びた　次の実弾確率 ${Math.round((ev.nextProb || 0) * 100)}%`, 1600);
     }
+  },
+
+  // ---------- 引き金ボタン ----------
+  showShoot() {
+    const b = $('#shootBtn');
+    if (b.classList.contains('on')) return;
+    b.classList.add('on'); b.disabled = false;
+    const go = () => {
+      if (b.disabled) return;
+      b.disabled = true;
+      this.sendAction({ type: 'shoot' });
+    };
+    b.onclick = go;
+    this._shootKey = (e) => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); go(); } };
+    window.addEventListener('keydown', this._shootKey);
+  },
+  hideShoot() {
+    $('#shootBtn').classList.remove('on');
+    if (this._shootKey) { window.removeEventListener('keydown', this._shootKey); this._shootKey = null; }
   },
 
   refreshSeats(m) {
@@ -396,15 +484,27 @@ const App = {
     const m = this.match; if (!m || !this.scene || this.busy) return;
     this.view.sync(m);
     this.refreshSeats(m);
-    const mine = currentActor(m) === this.uid && m.alive[this.uid];
-    this.view.setInput(!!mine, m);
-    if (m.phase === 'over' && !this.resultShown) this.showResult({ winner: m.winner });
+    const actor = currentActor(m);
+    const mine = actor === this.uid && m.alive[this.uid];
+    this.view.setInput(!!mine && m.phase === 'round', m);
+    if (m.phase === 'loser') {
+      // 途中参加などで演出を見ていない場合も、警報と構えた状態にそろえる
+      this.scene.setAlarm(0.45);
+      this.scene.raiseGun(actor, actor === this.uid, true);
+      $('#game').classList.add('exec');
+      if (mine) this.showShoot(); else this.hideShoot();
+    } else this.hideShoot();
+    if (m.phase === 'over' && !this.resultShown) this.showResult({ winners: m.winners });
     this.drive();
   },
 
   async sendAction(a) {
     const ok = await this.room.transactGame((m) => { applyAction(m, this.uid, a); return m; });
-    if (!ok) { this.popText('操作が反映されませんでした', 'r'); this.afterIdle(); }
+    if (!ok) {
+      this.popText('操作が反映されませんでした', 'r');
+      $('#shootBtn').disabled = false;
+      this.afterIdle();
+    }
   },
 
   // ホスト役（最古の接続中プレイヤー）がCPU・切断者・進行を担当
@@ -414,23 +514,25 @@ const App = {
     if (m.phase === 'execution') {
       const key = `x${m.eid}`; if (this.driverKey === key) return; this.driverKey = key;
       setTimeout(() => this.room.transactGame((mm) => { if (mm.eid !== m.eid) return; advance(mm); return mm; })
-        .then((ok) => { if (!ok) this.driverKey = null; }), 1000);
+        .then((ok) => { if (!ok) this.driverKey = null; }), 900);
       return;
     }
-    if (m.phase !== 'round') return;
+    if (m.phase !== 'round' && m.phase !== 'loser') return;
     const a = currentActor(m); if (!a) return;
     const mem = this.data?.members?.[a];
     const offline = !mem || mem.online === false;
     if (!m.cpu[a] && !offline) return;
     const key = `p${m.eid}:${a}:${offline}`; if (this.driverKey === key) return; this.driverKey = key;
-    const delay = m.cpu[a] ? 650 + Math.random() * 700 : 4000;
+    let delay = m.cpu[a] ? 650 + Math.random() * 700 : 4000;
+    if (m.phase === 'loser') delay = m.cpu[a] ? 1500 + Math.random() * 2500 : 7000; // CPUも少し溜めてから撃つ
     setTimeout(() => {
       if (!this.match || this.match.eid !== m.eid) return;
       const mem2 = this.data?.members?.[a];
       if (!m.cpu[a] && mem2 && mem2.online !== false) { this.driverKey = null; return; }
       this.room.transactGame((mm) => {
         if (mm.eid !== m.eid) return;
-        applyAction(mm, a, getRules(mm.gameId).cpuAction(mm, a));
+        const act = mm.phase === 'loser' ? { type: 'shoot' } : getRules(mm.gameId).cpuAction(mm, a);
+        applyAction(mm, a, act);
         return mm;
       }).then((ok) => { if (!ok) { this.driverKey = null; setTimeout(() => this.afterIdle(), 500); } });
     }, delay);
@@ -457,11 +559,21 @@ const App = {
     const b = $('#banner');
     b.className = 'banner on ' + cls;
     $('#bannerT').textContent = title; $('#bannerS').textContent = sub;
-    return new Promise((res) => setTimeout(() => { b.classList.remove('on'); setTimeout(res, 200); }, ms));
+    clearTimeout(this._bannerT);
+    return new Promise((res) => { this._bannerT = setTimeout(() => { b.classList.remove('on'); setTimeout(res, 200); }, ms); setTimeout(res, ms + 400); });
   },
   popText(t, cls = '') {
+    if (!t) return;
     const el = document.createElement('div'); el.className = 'pop ' + cls; el.textContent = t;
     $('#popLayer').appendChild(el); setTimeout(() => el.remove(), 1400);
+  },
+  // 出されたカードを大きく見せる
+  reveal({ img, who, forced, ms = 900 }) {
+    const r = $('#reveal');
+    $('#revealImg').src = img;
+    $('#revealWho').textContent = `${who}${forced ? '（RANDOM）' : ''} が出した`;
+    r.classList.remove('on'); void r.offsetWidth; r.classList.add('on');
+    return new Promise((res) => setTimeout(() => { r.classList.remove('on'); setTimeout(res, 150); }, ms));
   },
   caption(t) { const c = $('#caption'); c.textContent = t; c.classList.toggle('on', !!t); },
   choose(title, options) {
@@ -477,10 +589,11 @@ const App = {
   showResult(ev) {
     if (this.resultShown) return; this.resultShown = true;
     const m = this.match; const name = (u) => esc(m.names[u] || '?');
-    const order = [m.winner, ...m.deadOrder.slice().reverse()].filter((x) => x);
+    const winners = m.winners || ev.winners || [];
+    const order = [...winners, ...m.deadOrder.slice().reverse()];
     $('#resultBody').innerHTML = `
-      <div class="r-win">${name(m.winner)}</div><div class="r-sub">最後の生存者　（全${m.round}ラウンド）</div>
-      <ol class="r-list">${order.map((u, i) => `<li><span>${i + 1}</span>${name(u)}${i === 0 ? ' <b>SURVIVED</b>' : ' ✝'}</li>`).join('')}</ol>`;
+      <div class="r-win">${winners.map(name).join('<br>')}</div><div class="r-sub">${winners.length > 1 ? '生存者' : '最後の生存者'}　（全${m.round}ラウンド）</div>
+      <ol class="r-list">${order.map((u, i) => `<li><span>${i + 1}</span>${name(u)}${winners.includes(u) ? ' <b>SURVIVED</b>' : ' ✝'}</li>`).join('')}</ol>`;
     const host = this.isHost();
     $('#btnBackLobby').style.display = host ? '' : 'none';
     $('#resultWait').style.display = host ? 'none' : '';

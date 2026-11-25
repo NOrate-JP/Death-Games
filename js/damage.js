@@ -2,7 +2,7 @@
 export const DAMAGE_MODES = {
   life: {
     name: 'ライフ',
-    desc: '敗者はリボルバーで撃たれ、ライフが1減る。0で死亡。',
+    desc: '敗者は自分にリボルバーを撃ち、ライフが1減る。0で死亡。',
     options: [{ key: 'life', label: '初期ライフ', type: 'number', min: 1, max: 20, default: 3 }],
     init(m, u) { m.life[u] = m.dmg.life ?? 3; },
     apply(m, u) {
@@ -38,7 +38,7 @@ export const DAMAGE_MODES = {
   },
   roundlife: {
     name: 'ラウンドライフ',
-    desc: '敗者はリボルバーで撃たれ、ライフが「ラウンド数」だけ減る。0で死亡。',
+    desc: '敗者は自分にリボルバーを撃ち、ライフが「ラウンド数」だけ減る。0で死亡。',
     options: [{ key: 'roundLife', label: '初期ライフ', type: 'number', min: 1, max: 99, default: 7 }],
     init(m, u) { m.life[u] = m.dmg.roundLife ?? 7; },
     apply(m, u) {
@@ -50,8 +50,14 @@ export const DAMAGE_MODES = {
   },
 };
 
+// 全方式共通のペナルティ設定
+export const COMMON_PENALTY_OPTIONS = [
+  { key: 'survivors', label: '生存人数', type: 'number', min: 1, max: 5, default: 1,
+    note: 'この人数まで減ったらゲーム終了（参加人数未満まで）' },
+];
+
 export function defaultDamageSettings() {
-  const out = { mode: 'life' };
+  const out = { mode: 'life', survivors: 1 };
   for (const k in DAMAGE_MODES) for (const o of DAMAGE_MODES[k].options) out[o.key] = o.default;
   return out;
 }

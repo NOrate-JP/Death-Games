@@ -16,6 +16,7 @@
 </script>
 </head>
 <body>
+<div id="bgStage" class="bg-stage"></div>
 
 <!-- タイトル -->
 <section id="title" class="screen">
@@ -25,13 +26,13 @@
     <p class="tagline">— テーブルを囲め。最後まで生き残れ。 —</p>
     <div class="panel title-panel">
       <label class="fld">名前<input id="nameInput" maxlength="12" placeholder="あなたの名前"></label>
-      <button id="btnCreate" class="btn big">部屋を作る</button>
+      <button id="btnCreate" class="btn big menu">部屋を作る</button>
       <div class="join-row">
         <input id="codeInput" maxlength="4" placeholder="部屋コード" autocomplete="off">
         <button id="btnJoin" class="btn">参加</button>
         <button id="btnWatch" class="btn ghost">観戦</button>
       </div>
-      <button id="btnOffline" class="btn ghost">オフライン練習（CPU戦）</button>
+      <button id="btnOffline" class="btn ghost menu">オフライン練習（CPU戦）</button>
       <div id="fbWarn" class="warn" style="display:none">js/firebase-config.js が未設定のため、オンライン機能は使えません（オフライン練習のみ可）</div>
       <div id="titleErr" class="err"></div>
     </div>
@@ -85,7 +86,7 @@
   </div>
   <div class="hud-tr">
     <button id="btnMute" class="btn ghost sm">音</button>
-    <select id="selPixel" title="画質"><option value="2">画質：高</option><option value="3">画質：中</option><option value="4">画質：低</option><option value="5">画質：激低</option></select>
+    <select id="selPixel" title="画質"><option value="1">ドット：なし</option><option value="1.5">ドット：極小</option><option value="2">ドット：小</option><option value="3">ドット：中</option><option value="4">ドット：大</option></select>
     <button id="btnGameRules" class="btn ghost sm">ルール</button>
     <button id="btnExit" class="btn ghost sm">退出</button>
   </div>
@@ -95,6 +96,8 @@
   <div id="popLayer" class="pop-layer"></div>
   <div id="caption" class="caption"></div>
   <div id="banner" class="banner"><div id="bannerT" class="bt"></div><div id="bannerS" class="bs"></div></div>
+  <div id="reveal" class="reveal"><img id="revealImg" alt=""><div id="revealWho"></div></div>
+  <button id="shootBtn" class="shoot-btn"><span class="sb-main">引き金を引く</span><span class="sb-sub">クリック / SPACE</span></button>
   <div id="youDied" class="you-died">YOU DIED</div>
   <div id="chooser" class="chooser"><div class="panel"><div id="chooserT"></div><div id="chooserOpts"></div></div></div>
   <div id="result" class="result"><div class="panel">
