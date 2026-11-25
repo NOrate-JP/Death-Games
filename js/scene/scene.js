@@ -498,7 +498,7 @@ export class TableScene {
     this.controls.enabled = mode.kind === 'free';
     this.lampG.visible = mode.kind !== 'top'; // 真上視点ではランプを隠す
     for (const st of this.seats.values()) {
-      const own = mode.kind === 'seat' && mode.uid === st.uid;
+      const own = (mode.kind === 'seat' || mode.kind === 'custom') && mode.uid === st.uid;
       st.body.visible = !own && !st.empty;
       st.label.style.display = own || st.empty ? 'none' : '';
     }
@@ -523,6 +523,7 @@ export class TableScene {
       }
     }
     if (mode.kind === 'free') return { pos: V(2.6, 2.6, 2.6), look: V(0, TABLE_Y, 0) };
+    if (mode.kind === 'custom') return { pos: mode.pos.clone(), look: mode.look.clone() };
     if (mode.kind === 'top') {
       // 卓上全体を真上寄りから（自分の席側から見下ろす）
       const st = mode.uid && this.seats.get(mode.uid);
