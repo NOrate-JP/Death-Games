@@ -372,7 +372,7 @@ export class TableScene {
     // ラベル
     const label = document.createElement('div');
     label.className = 'seat-label';
-    label.innerHTML = `<div class="nm"></div><div class="st"></div><div class="ex"></div>`;
+    label.innerHTML = `<div class="nm"></div><div class="st"></div><div class="gx"></div><div class="ex"></div>`;
     label.querySelector('.nm').textContent = p.name || '';
     this.labelLayer.appendChild(label);
     if (isMe || empty) body.visible = false;
@@ -380,8 +380,9 @@ export class TableScene {
     return { uid: p.uid, name: p.name, group: g, body, head, maskM, fan, marker, label, isMe, empty, alive: true, pos, idx: i, handCount: -1, gun, restPos, restQ, raised: false };
   }
 
-  setSeatStatus(uid, { status, extra, active, alive } = {}) {
+  setSeatStatus(uid, { status, extra, active, alive, game } = {}) {
     const st = this.seats.get(uid); if (!st) return;
+    if (game !== undefined) st.label.querySelector('.gx').textContent = game;
     if (status !== undefined) st.label.querySelector('.st').textContent = status;
     if (extra !== undefined) st.label.querySelector('.ex').textContent = extra;
     if (active !== undefined) {
@@ -405,6 +406,9 @@ export class TableScene {
   }
 
   setBackCanvas(c) { this._backCanvas = c; }
+  // 席のローカル座標（+zがテーブル中央方向）→ワールド座標
+  seatPoint(uid, x, y, z) { const st = this.seats.get(uid); return st ? st.group.localToWorld(V(x, y, z)) : V(0, y, 0); }
+  seatYaw(uid) { const st = this.seats.get(uid); return st ? st.group.rotation.y : 0; }
 
   setHandCount(uid, n) {
     const st = this.seats.get(uid); if (!st || st.isMe) return;
@@ -492,6 +496,7 @@ export class TableScene {
   setView(mode, instant = false, dur = 700) {
     this.mode = mode;
     this.controls.enabled = mode.kind === 'free';
+    this.lampG.visible = mode.kind !== 'top'; // 真上視点ではランプを隠す
     for (const st of this.seats.values()) {
       const own = mode.kind === 'seat' && mode.uid === st.uid;
       st.body.visible = !own && !st.empty;
@@ -518,6 +523,12 @@ export class TableScene {
       }
     }
     if (mode.kind === 'free') return { pos: V(2.6, 2.6, 2.6), look: V(0, TABLE_Y, 0) };
+    if (mode.kind === 'top') {
+      // 卓上全体を真上寄りから（自分の席側から見下ろす）
+      const st = mode.uid && this.seats.get(mode.uid);
+      const dir = st ? st.pos.clone().setY(0).normalize() : V(0, 0, 1);
+      return { pos: dir.clone().multiplyScalar(0.3).setY(3.7), look: V(0, TABLE_Y, 0).addScaledVector(dir, 0.04) };
+    }
     return { pos: V(0, 3.1, 3.5), look: V(0, TABLE_Y - 0.05, -0.2) };
   }
   lookAtTemp(worldPos, dur = 500) {

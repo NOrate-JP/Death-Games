@@ -9,7 +9,7 @@ Firebase（匿名ログイン + Realtime Database）と GitHub Pages だけで�
    - Authentication → ログイン方法 → **匿名** を有効化
    - Realtime Database を作成（ロケーションはどこでも可）
    - Realtime Database → ルール に `database.rules.json` の中身を貼り付けて公開
-2. **設定値を貼る**
+2. **設定値を貼る**（※配布zipには `js/firebase-config.js` を含めていません。初回だけ下の内容で作成し、以降は上書きされません）
    - プロジェクトの設定 → マイアプリ → Webアプリを追加 → 表示される `firebaseConfig` を
      `js/firebase-config.js` に貼り付け（`databaseURL` を必ず含める）
 3. **GitHub Pagesで公開**
@@ -48,6 +48,7 @@ js/audio.js            効果音（すべてWebAudio合成）
 js/card-art.js         カード画像ローダー
 js/games/index.js      ゲーム登録所
 js/games/count-cards/  COUNT CARDS（cards.js 定義 / rules.js ルール / view.js 表示）
+js/games/liar-dice/    LIAR'S DICE（rules.js ルール / view.js 表示）
 ```
 
 ## 新しいゲームの追加方法
@@ -59,7 +60,8 @@ js/games/count-cards/  COUNT CARDS（cards.js 定義 / rules.js ルール / view
 
 - `meta` … `{ id, name, subtitle, minPlayers, maxPlayers, options:[…], rulesHtml }`（options はロビーに自動でフォーム化）
 - `startRound(m)` … ラウンド開始。状態は `m.sub` に置く
-- `applyAction(m, uid, action)` … 不正なら throw。敗者が決まったら `m.loser = { uid, reason }`
+- `applyAction(m, uid, action)` … 不正なら throw。敗者が決まったら `m.loser = { uid, reason, text, times }`（times＝引き金を引く回数）
+- ラウンドをまたいで残したい状態は `m.gs` に置く（例：LIAR'S DICE の各自のダイス数）
 - `currentActor(m)` … 入力待ちのプレイヤー
 - `cpuAction(m, uid)` … CPU/切断者の代打ち
 - `describeEvent(ev, name)` … ログ用の文章
@@ -79,3 +81,20 @@ js/games/count-cards/  COUNT CARDS（cards.js 定義 / rules.js ルール / view
 - 手札情報はDB上で全員に見える構造です（身内向け。気になる場合は将来Cloud Functions化）
 - 切断したプレイヤーの手番は約4秒後、引き金は約7秒後にCPUが代行
 - 画質（ドットの細かさ）はゲーム中右上で切替。テーブル・カードのテクスチャは常に高解像度
+
+### js/firebase-config.js の雛形（初回のみ作成）
+
+```js
+export const firebaseConfig = {
+  apiKey: '...', authDomain: '...', databaseURL: '...', projectId: '...',
+  storageBucket: '...', messagingSenderId: '...', appId: '...',
+};
+```
+
+## LIAR'S DICE 仕様メモ（解釈した部分）
+
+- ブラフ宣言者が負けた場合のペナルティは「実際の個数 − 宣言個数」（ちょうどなら1回）。差分ペナルティOFFなら常に1回
+- ペナルティ回数＝引き金を引く回数（ライフ方式なら回数分ライフ減、リボルバー方式なら回数分引く）
+- 次ラウンドは前ラウンドの敗者から開始（死亡していれば次の席の人）。宣言の順番は常に正順
+- 個数の上限は場のダイス合計数。これ以上レイズできない時はブラフのみ
+- 振りなおしは最初の宣言時にも使える

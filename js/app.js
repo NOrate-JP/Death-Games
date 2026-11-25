@@ -335,6 +335,8 @@ const App = {
       this.view.sync(m); this.refreshSeats(m); this.afterIdle(); return;
     }
     this.lastEid = m.eid;
+    // これから再生するイベントを先に知らせる（次ラウンドの手札が一瞬見える問題の対策）
+    if (evs.length) this.view?.onQueue?.(evs, m);
     this.queue.push(...evs);
     this.pump();
   },
@@ -359,7 +361,7 @@ const App = {
     const m = this.match; const name = (u) => m.names[u] || '?';
     let t = null;
     if (ev.t === 'roundStart') t = `— ROUND ${ev.round} —`;
-    else if (ev.t === 'loser') t = `⚠ 敗者：${name(ev.uid)}`;
+    else if (ev.t === 'loser') t = ev.again ? null : `⚠ 敗者：${name(ev.uid)}${ev.times > 1 ? `（ペナルティ${ev.times}回）` : ''}`;
     else if (ev.t === 'execution') t = ev.hit ? `${name(ev.uid)} 被弾${ev.dmg ? `（-${ev.dmg}）` : ''}` : `${name(ev.uid)} 空砲`;
     else if (ev.t === 'death') t = `✝ ${name(ev.uid)} 死亡`;
     else if (ev.t === 'gameOver') t = `生存者：${(ev.winners || []).map(name).join('、')}`;
@@ -399,11 +401,19 @@ const App = {
   async animateLoser(ev) {
     const m = this.match, sc = this.scene, nm = m.names[ev.uid];
     const isMe = ev.uid === this.uid;
+    if (ev.again) {
+      // 複数回ペナルティの2回目以降
+      sc.setAlarm(0.45);
+      $('#game').classList.add('exec');
+      this.caption(isMe ? `ペナルティ残り ${ev.left}回。もう一度引き金を引け。` : `${nm} は再び銃を構えた…（残り ${ev.left}回）`);
+      await sc.raiseGun(ev.uid, isMe);
+      return;
+    }
     sc.setAlarm(true);
     sfx.siren(3.2);
     setTimeout(() => { if (this.scene === sc && this.match?.phase === 'loser') sc.setAlarm(0.45); }, 3300);
     for (const u of m.seats) sc.setSeatStatus(u, { active: u === ev.uid });
-    await this.banner(`${nm} の負け`, ev.text || '', 2600, 'red');
+    await this.banner(`${nm} の負け`, (ev.text || '') + (ev.times > 1 && !(ev.text || '').includes('ペナルティ') ? `　ペナルティ ${ev.times}回` : ''), 2800, 'red');
     $('#game').classList.add('exec');
     this.caption(isMe ? 'あなたの番だ。自分のタイミングで引き金を引け。' : `${nm} がリボルバーを手に取った…`);
     await sc.raiseGun(ev.uid, isMe);
@@ -440,9 +450,9 @@ const App = {
       }
       await this.banner(`${nm} 死亡`, isMe ? 'あなたは観戦に回ります' : '', 1800, 'red');
     } else if (ev.hit) {
-      await this.banner(`${nm} 被弾`, `残りライフ ${Math.max(0, ev.lifeAfter)}`, 1500);
+      await this.banner(`${nm} 被弾`, `残りライフ ${Math.max(0, ev.lifeAfter)}${ev.left > 0 ? `　／　あと ${ev.left}回` : ''}`, 1500);
     } else {
-      await this.banner('空砲', `${nm} は生き延びた　次の実弾確率 ${Math.round((ev.nextProb || 0) * 100)}%`, 1600);
+      await this.banner('空砲', `${nm} は生き延びた　次の実弾確率 ${Math.round((ev.nextProb || 0) * 100)}%${ev.left > 0 ? `　／　あと ${ev.left}回` : ''}`, 1600);
     }
   },
 

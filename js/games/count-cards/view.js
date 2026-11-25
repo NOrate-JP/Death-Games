@@ -199,6 +199,10 @@ class CountCardsView {
     for (const [key, b] of this.handEls) if (!keep.has(key)) { b.remove(); this.handEls.delete(key); }
   }
 
+  onQueue(evs, m) {
+    if (evs.some((e) => e.t === 'cc_setup')) { this.handLimit = 0; this.renderHand(m); }
+  }
+
   setInput(on, m) { this.inputOn = on; this.lastM = m; this.renderHand(m); }
 
   async onCard(btn) {
