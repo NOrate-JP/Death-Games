@@ -103,8 +103,9 @@ class LiarDiceView {
       <div class="ld-count" id="ldCount"></div>
       <div class="ld-callout" id="ldCallout"></div>
       <div class="ld-mine" id="ldMine"></div>
+      <div class="ld-board" id="ldBoard"></div>
       <div class="ld-ctrl" id="ldCtrl"></div>`;
-    this.el = Object.fromEntries(['Bid', 'Total', 'Turn', 'Count', 'Callout', 'Mine', 'Ctrl'].map((k) => [k.toLowerCase(), h.querySelector('#ld' + k)]));
+    this.el = Object.fromEntries(['Bid', 'Total', 'Turn', 'Count', 'Callout', 'Mine', 'Ctrl', 'Board'].map((k) => [k.toLowerCase(), h.querySelector('#ld' + k)]));
   }
 
   setBidHud(m, bid) {
@@ -158,7 +159,7 @@ class LiarDiceView {
       const mesh = this.makeDie(d);
       mesh.position.copy(this.diePos(uid, i));
       mesh.rotation.y = this.ctx.scene.seatYaw(uid) + (Math.random() - 0.5) * 0.3;
-      mesh.userData = { face: d, i };
+      mesh.userData = { face: d, i, owner: uid };
       this.ctx.scene.scene.add(mesh);
       arr.push(mesh);
     });
@@ -205,14 +206,16 @@ class LiarDiceView {
   renderMine(m) {
     const box = this.el.mine;
     const me = this.ctx.me;
-    if (!m || !me || !m.alive[me] || !m.sub?.dice?.[me]) { box.innerHTML = ''; return; }
-    if (this.hideMine) { box.innerHTML = '<div class="ld-cupmsg">カップの中…</div>'; return; }
+    const setHtml = (sig, html) => { if (this._mineSig === sig) return false; this._mineSig = sig; box.innerHTML = html; return true; };
+    if (!m || !me || !m.alive[me] || !m.sub?.dice?.[me] || this.boardOn) { setHtml('empty', ''); return; }
+    if (this.hideMine) { setHtml('cup', '<div class="ld-cupmsg">カップの中…</div>'); return; }
     const dice = m.sub.dice[me], shown = m.sub.shown[me];
     const picking = this.inputOn && this.sel.reroll;
-    box.innerHTML = `<div class="ld-mlabel">あなたのダイス${picking ? '<span>（公開するダイスを選択）</span>' : ''}</div>` + dice.slice(0, this.mineShown).map((d, i) => `
-      <button class="ld-die ${shown[i] ? 'shown' : ''} ${this.sel.reveal.has(i) ? 'pick' : ''}" data-i="${i}" ${picking && !shown[i] ? '' : 'disabled'}>
+    const sig = JSON.stringify([dice.slice(0, this.mineShown), shown, [...this.sel.reveal], picking]);
+    if (!setHtml(sig, `<div class="ld-mlabel">あなたのダイス${picking ? '<span>（公開するダイスを選択）</span>' : ''}</div>` + dice.slice(0, this.mineShown).map((d, i) => `
+      <button class="ld-die ${shown[i] ? 'shown' : ''} ${this.sel.reveal.has(i) ? 'pick' : ''} ${i === this._popIdx ? 'pop' : ''}" data-i="${i}" ${picking && !shown[i] ? '' : 'disabled'}>
         <img src="${faceURL(d)}" alt="${faceLabel(d)}" draggable="false">${shown[i] ? '<i>公開</i>' : ''}</button>`).join('')
-      + (dice.length ? '' : '<div class="ld-cupmsg">ダイスなし（宣言のみ）</div>');
+      + (dice.length ? '' : '<div class="ld-cupmsg">ダイスなし（宣言のみ）</div>'))) return;
     box.querySelectorAll('.ld-die').forEach((b) => (b.onclick = () => {
       const i = +b.dataset.i;
       const hid = hiddenIdx(m, me);
@@ -277,6 +280,25 @@ class LiarDiceView {
     this.ctx.send(a);
   }
 
+  // ---- 判定ボード（全員の出目を2Dで一覧） ----
+  showBoard(m, ev, seats) {
+    this.boardOn = true; this._mineSig = null; this.renderMine(m);
+    const f = ev.bid.face;
+    const hit = (d) => (f === STAR ? d === STAR : d === f || d === STAR);
+    this.el.board.innerHTML = `<div class="ldb-h">オープン！ 宣言「${bidText(ev.bid)}」（${this.ctx.name(ev.bidder)}）</div>` +
+      seats.map((u) => `<div class="ldb-row ${u === this.ctx.me ? 'me' : ''}"><span class="ldb-n">${this.ctx.name(u)}</span><span class="ldb-d">${
+        ev.dice[u].length ? ev.dice[u].map((d, i) => `<img src="${faceURL(d)}" data-k="${u}:${i}" class="${hit(d) ? 'h' : 'x'}">`).join('') : '<em>ダイスなし</em>'
+      }</span><span class="ldb-c" data-c="${u}">0</span></div>`).join('');
+    this.el.board.classList.add('on');
+  }
+  markBoard(uid, i) {
+    const im = this.el.board.querySelector(`img[data-k="${uid}:${i}"]`);
+    if (im) im.classList.add('lit');
+    const c = this.el.board.querySelector(`[data-c="${uid}"]`);
+    if (c) { c.textContent = +c.textContent + 1; c.classList.add('pos'); }
+  }
+  hideBoard() { this.boardOn = false; this.el.board.classList.remove('on'); this.el.board.innerHTML = ''; this._mineSig = null; }
+
   callout(html, ms = 1300, cls = '') {
     const c = this.el.callout;
     c.className = 'ld-callout on ' + cls; c.innerHTML = html;
@@ -289,6 +311,7 @@ class LiarDiceView {
     switch (ev.t) {
       case 'ld_setup': {
         this.revealed = false;
+        this.hideBoard();
         this.el.count.innerHTML = '';
         this.setBidHud(m, null);
         this.el.total.textContent = `場のダイス 合計 ${ev.total}個`;
@@ -316,8 +339,8 @@ class LiarDiceView {
         // 自分のダイスを1個ずつ見せる
         this.hideMine = false;
         const n = (m.sub?.dice?.[this.ctx.me] || []).length;
-        for (let k = 1; k <= n; k++) { this.mineShown = k; this.renderMine(m); sfx.tick(); await sc.wait(110); }
-        this.mineShown = Infinity;
+        for (let k = 1; k <= n; k++) { this._popIdx = k - 1; this.mineShown = k; this.renderMine(m); sfx.tick(); await sc.wait(110); }
+        this._popIdx = -1; this.mineShown = Infinity; this._mineSig = null; this.renderMine(m);
         return;
       }
       case 'ld_turn': {
@@ -363,6 +386,7 @@ class LiarDiceView {
         await sc.tween(700, (t) => seats.forEach((u) => this.setCupLift(u, t)));
         const all = [];
         for (const u of seats) all.push(...this.placeDice(u, ev.dice[u]));
+        this.showBoard(m, ev, seats);
         await sc.wait(600);
         // 1個ずつ数える
         const f = ev.bid.face;
@@ -376,6 +400,7 @@ class LiarDiceView {
         for (const mesh of all) {
           if (!hit(mesh.userData.face)) { mesh.material.forEach((mt) => mt.color.setScalar(0.35)); continue; }
           k++; show(); sfx.tick();
+          this.markBoard(mesh.userData.owner, mesh.userData.i);
           mesh.material.forEach((mt) => { mt.emissive = new THREE.Color(0x7a5a10); });
           const y0 = mesh.position.y;
           sc.tween(260, (t) => { mesh.position.y = y0 + Math.sin(t * Math.PI) * 0.06; });
