@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEATH GAMES</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Special+Elite&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<!-- タイトル -->
+<section id="title" class="screen">
+  <div class="title-bg"></div>
+  <div class="title-wrap">
+    <h1 class="logo"><span>DEATH</span><span>GAMES</span></h1>
+    <p class="tagline">— テーブルを囲め。最後まで生き残れ。 —</p>
+    <div class="panel title-panel">
+      <label class="fld">名前<input id="nameInput" maxlength="12" placeholder="あなたの名前"></label>
+      <button id="btnCreate" class="btn big">部屋を作る</button>
+      <div class="join-row">
+        <input id="codeInput" maxlength="4" placeholder="部屋コード" autocomplete="off">
+        <button id="btnJoin" class="btn">参加</button>
+        <button id="btnWatch" class="btn ghost">観戦</button>
+      </div>
+      <button id="btnOffline" class="btn ghost">オフライン練習（CPU戦）</button>
+      <div id="fbWarn" class="warn" style="display:none">js/firebase-config.js が未設定のため、オンライン機能は使えません（オフライン練習のみ可）</div>
+      <div id="titleErr" class="err"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ロビー -->
+<section id="room" class="screen">
+  <header class="room-head">
+    <div class="logo small"><span>DEATH</span><span>GAMES</span></div>
+    <div id="roomCodeBox" class="code-box">ROOM <b id="roomCode">----</b><button id="btnCopy" class="btn ghost sm">招待URLをコピー</button></div>
+    <div id="offlineTag" class="code-box" style="display:none">OFFLINE PRACTICE</div>
+    <button id="btnLeave" class="btn ghost sm">退出</button>
+  </header>
+  <div class="room-grid">
+    <div class="panel">
+      <h2>GAME</h2>
+      <div id="gameList" class="game-list"></div>
+      <h3 id="gameOptsTitle"></h3>
+      <div id="gameOpts" class="opts"></div>
+      <button id="btnRules" class="btn ghost sm">ルールを見る</button>
+    </div>
+    <div class="panel">
+      <h2>PENALTY <small>敗者へのダメージ</small></h2>
+      <div id="dmgModes" class="dmg-list"></div>
+      <div id="dmgOpts" class="opts"></div>
+    </div>
+    <div class="panel">
+      <h2>PLAYERS <small>最大6人</small></h2>
+      <div id="playerList" class="mem-list"></div>
+      <h3>観戦者</h3>
+      <div id="specList" class="mem-list"></div>
+      <div class="room-btns">
+        <button id="btnRole" class="btn ghost sm"></button>
+        <button id="btnCpu" class="btn ghost sm">CPUを追加</button>
+      </div>
+      <button id="btnStart" class="btn big">ゲーム開始</button>
+      <div id="waitHost" class="dim">ホストの開始を待っています…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ゲーム -->
+<section id="game" class="screen">
+  <div id="stage"></div>
+  <div class="hud-tl">
+    <div id="hudGame" class="hud-game"></div>
+    <div id="hudRound" class="hud-round"></div>
+    <div class="hud-mode">PENALTY：<span id="hudMode"></span></div>
+    <div id="hudMe" class="hud-me"></div>
+  </div>
+  <div class="hud-tr">
+    <button id="btnMute" class="btn ghost sm">音</button>
+    <select id="selPixel" title="画質"><option value="2">画質：高</option><option value="3">画質：中</option><option value="4">画質：低</option><option value="5">画質：激低</option></select>
+    <button id="btnGameRules" class="btn ghost sm">ルール</button>
+    <button id="btnExit" class="btn ghost sm">退出</button>
+  </div>
+  <div id="log" class="log"></div>
+  <div id="gameHud" class="game-hud"></div>
+  <div id="camBar" class="cam-bar"></div>
+  <div id="popLayer" class="pop-layer"></div>
+  <div id="caption" class="caption"></div>
+  <div id="banner" class="banner"><div id="bannerT" class="bt"></div><div id="bannerS" class="bs"></div></div>
+  <div id="youDied" class="you-died">YOU DIED</div>
+  <div id="chooser" class="chooser"><div class="panel"><div id="chooserT"></div><div id="chooserOpts"></div></div></div>
+  <div id="result" class="result"><div class="panel">
+    <h2>GAME OVER</h2><div id="resultBody"></div>
+    <div class="room-btns"><button id="btnBackLobby" class="btn">ロビーに戻る</button><button id="btnResultExit" class="btn ghost">退出</button></div>
+    <div id="resultWait" class="dim">ホストがロビーに戻すのを待っています…</div>
+  </div></div>
+</section>
+
+<div id="modal" class="modal"><div class="panel modal-panel"><button id="modalClose" class="btn ghost sm close">閉じる</button><div id="modalBody"></div></div></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
