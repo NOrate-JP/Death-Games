@@ -407,7 +407,7 @@ const WIDGETS = {
     const maxH = Math.max(...q.grid.flat());
     const cam = new THREE.PerspectiveCamera(32, 600 / 360, 0.1, 100);
     const dist = n * 2.05 + 2.6 + maxH * 0.5;
-    cam.position.set(0, dist * 0.6, dist); cam.lookAt(0, maxH * 0.4, 0);
+    cam.position.set(0, dist * 0.72, dist * 0.92); cam.lookAt(0, maxH * 0.4, 0); // 判定より少し高い角度から見下ろす
     s.add(new THREE.AmbientLight(0xffffff, 0.9));
     const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(3, 8, 5); s.add(dl);
     const grp = new THREE.Group(); s.add(grp);

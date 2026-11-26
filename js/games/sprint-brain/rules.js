@@ -64,14 +64,43 @@ export function fstr(x) {
 const OPS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
 
 // ---------- 問題生成 ----------
+// 視線チェック：カメラが1周する間に、そのマスの天面（空きマスなら床）がどこかの方位から見えるか
+// slope … 視線の上り勾配（実際のカメラより浅めにして余裕を持たせている）
+// needDeg … 連続してこの角度以上見えていること（一瞬だけ見える、を除外）
+export function cubeCellVisible(grid, x, z, slope = 0.36, needDeg = 30) {
+  const n = grid.length, h = grid[x][z];
+  let run = 0, best = 0;
+  for (let deg = 0; deg < 360 + needDeg; deg += 5) {
+    const a = (deg * Math.PI) / 180, dx = Math.cos(a), dz = Math.sin(a);
+    let ok = true;
+    for (let t = 0.05; t < n * 1.5; t += 0.05) {
+      const cx = Math.floor(x + 0.5 + dx * t), cz = Math.floor(z + 0.5 + dz * t);
+      if (cx < 0 || cz < 0 || cx >= n || cz >= n) break;
+      if (cx === x && cz === z) continue;
+      if (grid[cx][cz] > h + slope * t + 1e-9) { ok = false; break; }
+    }
+    run = ok ? run + 5 : 0;
+    if (run > best) best = run;
+  }
+  return best >= needDeg;
+}
+export const cubeAllVisible = (g) => g.every((row, x) => row.every((_, z) => cubeCellVisible(g, x, z)));
+
 function genCube() {
-  const n = pick([4, 4, 5]); // 土台 4×4 / 5×5
+  // 360度見れば必ず数えられる配置だけを採用（くぼみの底が見えない配置は作り直す）
+  const n = pick([4, 5]); // 土台 4×4 / 5×5（半々）
   const maxH = n === 4 ? 5 : 4;
-  for (;;) {
+  for (let i = 0; i < 6000; i++) {
     const grid = Array.from({ length: n }, () => Array.from({ length: n }, () => (Math.random() < 0.2 ? 0 : rint(1, maxH))));
     const total = grid.flat().reduce((a, b) => a + b, 0);
-    if (total >= 18 && total <= 60) return { type: 'cube', grid, answer: String(total), show: String(total) };
+    if (total < 18 || total > 60) continue;
+    if (!cubeAllVisible(grid)) continue;
+    return { type: 'cube', grid, answer: String(total), show: String(total) };
   }
+  // 念のための保険：中央が高いピラミッド型（必ず全部見える）
+  const grid = Array.from({ length: 4 }, (_, x) => Array.from({ length: 4 }, (_, z) => 4 - Math.max(Math.abs(x - 1.5), Math.abs(z - 1.5)) + 0.5 | 0));
+  const total = grid.flat().reduce((a, b) => a + b, 0);
+  return { type: 'cube', grid, answer: String(total), show: String(total) };
 }
 function genAlpha() {
   const all = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
