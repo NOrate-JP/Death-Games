@@ -25,11 +25,8 @@ export const CARD_DEFS = {
 };
 
 // 出現しやすさ（山札は無限・重み付きランダム）
-export const DEFAULT_WEIGHTS = {
-  n1: 4, n2: 4, n3: 4, n4: 4, n5: 4, n6: 4, n7: 4, n8: 4, n9: 4,
-  n0: 3, nm1: 3, nm5: 2,
-  eq0: 2, eqmax: 1, reverse: 3, plus2: 3, shot: 2, double: 2, random: 2, shield: 2,
-};
+// （ロビーの「高度な設定」で変更可能。値 ÷ 合計 が出現確率）
+export const DEFAULT_WEIGHTS = Object.fromEntries(Object.keys(CARD_DEFS).map((k) => [k, 10]));
 
 // 手札の表示順
 export const CARD_ORDER = ['nm5', 'nm1', 'n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9',

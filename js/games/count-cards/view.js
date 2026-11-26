@@ -5,6 +5,7 @@ import { legalIndices } from './rules.js';
 import { preloadCards, cardCanvas, cardURL } from '../../card-art.js';
 import { TABLE_Y } from '../../scene/scene.js';
 import { sfx } from '../../audio.js';
+import { makeHandCard, layoutFan } from '../../hand-ui.js';
 
 const KEY = 'count-cards';
 
@@ -180,23 +181,20 @@ class CountCardsView {
       keep.add(key);
       let b = this.handEls.get(key);
       if (!b) {
-        b = document.createElement('button');
-        b.innerHTML = `<img src="${cardURL(KEY, id)}" alt="${CARD_DEFS[id].label}" draggable="false">`;
-        b.addEventListener('mouseenter', () => { this.el.tip.textContent = CARD_DEFS[id].desc ? `${CARD_DEFS[id].label}：${CARD_DEFS[id].desc}` : `数字カード ${CARD_DEFS[id].label}`; });
-        b.addEventListener('mouseleave', () => { this.el.tip.textContent = ''; });
-        b.addEventListener('click', () => this.onCard(b));
+        const d = CARD_DEFS[id];
+        b = makeHandCard({ img: cardURL(KEY, id), label: d.label, tip: d.desc ? `【${d.label}】${d.desc}` : `数字カード「${d.label}」：場の数字に ${d.label} を足す`, onPlay: (x) => this.onCard(x) });
         b.classList.add('new');
         setTimeout(() => b.classList.remove('new'), 300);
         this.handEls.set(key, b);
       }
       b.dataset.idx = i; b.dataset.card = id;
-      b.className = 'card' + (legal.has(i) ? ' playable' : '') + (CARD_DEFS[id].type === 'sp' ? ' sp' : '') + (b.classList.contains('new') ? ' new' : '');
-      b.disabled = !legal.has(i);
+      b.className = 'hand-card' + (legal.has(i) ? ' playable' : ' locked') + (CARD_DEFS[id].type === 'sp' ? ' sp' : '') + (b.classList.contains('new') ? ' new' : '') + (b.classList.contains('peek') ? ' peek' : '');
       const want = prev ? prev.nextSibling : box.firstChild;
       if (want !== b) box.insertBefore(b, want);
       prev = b;
     }
     for (const [key, b] of this.handEls) if (!keep.has(key)) { b.remove(); this.handEls.delete(key); }
+    layoutFan(box);
   }
 
   onQueue(evs, m) {
@@ -216,8 +214,9 @@ class CountCardsView {
       if (!target || !this.inputOn) return;
     }
     this.inputOn = false;
+    btn.classList.remove('peek');
     btn.classList.add('leaving');
-    this.el.hand.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    this.el.hand.querySelectorAll('.hand-card').forEach((b) => b.classList.add('locked'));
     this.ctx.send({ type: 'play', idx, card: id, target });
   }
 

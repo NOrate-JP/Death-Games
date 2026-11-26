@@ -6,7 +6,7 @@ const rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 function drawCard(weights) {
-  const w = weights || DEFAULT_WEIGHTS;
+  const w = { ...DEFAULT_WEIGHTS, ...(weights || {}) };
   const ids = Object.keys(w).filter((k) => CARD_DEFS[k] && w[k] > 0);
   const total = ids.reduce((a, k) => a + w[k], 0);
   let r = Math.random() * total;
@@ -27,6 +27,7 @@ export const meta = {
     { key: 'targetMin', label: '目標値の最小', type: 'number', min: 5, max: 99, default: 15 },
     { key: 'targetMax', label: '目標値の最大', type: 'number', min: 5, max: 99, default: 30 },
   ],
+  cards: Object.entries(CARD_DEFS).map(([id, d]) => ({ id, label: d.label })),
   rulesHtml: `
     <p>ラウンド開始時に<b>目標値</b>（設定範囲からランダム）が決まり、各自に手札が配られます。
     ランダムに選ばれたスタートプレイヤーから順に、手札を<b>必ず1枚</b>出します。</p>
