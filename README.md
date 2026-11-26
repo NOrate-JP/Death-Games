@@ -21,6 +21,9 @@ Firebase未設定でも「オフライン練習（CPU戦）」は遊べます。
 
 ## カード画像の差し替え
 
+LUCK BUTTON は `assets/cards/luck-button/` に skip.png / reverse.png / discard.png / double.png / danger.png / taboo.png / onehit.png / analyze.png / xray.png / shuffle.png / back.png を置くと差し替わります。
+
+
 `assets/cards/count-cards/` に以下の名前でPNGを置くと自動で差し替わります（無いカードは仮カードを自動生成）。
 推奨サイズ 200×300（2:3）。
 
@@ -50,6 +53,8 @@ js/games/index.js      ゲーム登録所
 js/games/count-cards/  COUNT CARDS（cards.js 定義 / rules.js ルール / view.js 表示）
 js/games/liar-dice/    LIAR'S DICE（rules.js ルール / view.js 表示）
 js/games/sprint-brain/  SPRINT BRAIN（rules.js 問題生成・判定 / view.js モニター・各問題UI）
+js/games/luck-button/   LUCK BUTTON（rules.js ルール・カード / view.js ボタン装置・手札）
+js/hand-ui.js          カードゲーム共通の扇形手札（マウスオーバー/1回目タップで拡大＋効果テキスト）
 ```
 
 ## 新しいゲームの追加方法
@@ -103,7 +108,24 @@ export const firebaseConfig = {
 
 ## SPRINT BRAIN 仕様メモ
 
+- 判定は「ボタンを押した時刻（サーバー時刻補正済み）」の順。決着しそうな解答が届いたら1秒間「判定中…」で待ち、その間に届いた解答も含めて押した時刻順で決める（rules.js の GRACE_MS で調整可）
+- 最後の2人以上の正解、または不正解2人以上が完全に同じ時刻（ミリ秒単位）なら、該当者だけでサドンデス問題
+- 正解発表は問題を表示したまま、下部に「答えはこれでした」と正解者の順位・タイムを表示
 - 問題・答えはランダム生成。CPUは出題形式ごとの目安時間でランダムに解答（たまに不正解）
 - 制限時間（デフォルト90秒）を設定に追加。時間切れの場合は未正解者からランダムに1人が敗者
 - Quick Math はカード4枚。数字→記号→数字で計算し、結果は後に押したカードの位置に出る。小数第1位まで表せない数は分数表記
 - 観戦者・死亡者も問題画面を（操作なしで）見られる
+
+## LUCK BUTTON 仕様メモ（解釈した部分）
+
+- ラウンドごとに手札は配り直し（前ラウンドの残りは破棄）。次ラウンドは前ラウンドの敗者から
+- DOUBLE を受けた人がボタン付きのカードを使った場合、そのカードで押す1つも「2つ」に含める
+- カードは1ターン1枚、ボタンを押す前にだけ使える
+- DISCARD の対象は「その時点のターン順で次の人」
+- SHUFFLE 使用時は全員の ANALYZE / X-RAY 情報を消去（位置が変わったため）
+- OUTボタンを押してラウンドが終わると、全OUTボタンの位置が全員に公開される
+
+## 共通設定
+
+- ペナルティ「自動で引き金を引く」：ONなら敗者の引き金は約2秒後に自動
+- 高度な設定「カードの出現率」（COUNT CARDS / LUCK BUTTON）：各カードの値 ÷ 全カードの合計 が出現確率。デフォルトは全部10
