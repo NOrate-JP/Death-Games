@@ -370,3 +370,60 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .sb-mhint.ng { color: #ff8a7a; }
 .sb-math.off .sb-mcard, .sb-math.off .sb-mop, .sb-math.off .sb-mtool { pointer-events: none; }
 @media (max-width: 900px) { .sb-side { width: 110px; } .sb-tgrid { grid-template-columns: repeat(4, 70px); grid-template-rows: repeat(3, 64px); } .sb-tbtn { font-size: 28px; } .sb-agrid { grid-template-columns: repeat(5, 44px); } }
+/* SPRINT BRAIN v2：判定中・正解発表・サドンデス */
+.sb-strip { position: absolute; left: 24px; right: 24px; bottom: 18px; z-index: 4; text-align: center; background: rgba(0,0,0,.86); border: 2px solid #8dffa8; padding: 10px 16px; animation: dealIn .25s ease-out; }
+.sb-strip.judge { border-color: #ffd060; padding: 6px; }
+.sb-strip .judge { color: #ffd060; font-size: 20px; letter-spacing: .2em; animation: pulse .6s infinite; }
+.sb-strip .k { font-size: 14px; color: #8dffa8; }
+.sb-strip .v { font-family: "Courier New", monospace; font-size: 46px; font-weight: bold; color: #fff; word-break: break-all; line-height: 1.15; }
+.sb-strip .rk { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; font-size: 13px; color: #c8d8cc; margin-top: 4px; }
+.sb-strip .tie { font-family: var(--title); font-size: 34px; color: #ff6a5a; }
+.sb-crt.sudden .sb-screen { box-shadow: 0 0 0 14px #3a1410, 0 0 0 18px #111, 0 0 60px rgba(255,60,40,.3), inset 0 0 80px rgba(0,0,0,.85); }
+.sb-sudden { font-family: var(--title); font-size: 30px; color: #ff4a3a; letter-spacing: .2em; margin-bottom: 6px; animation: pulse .9s infinite; }
+.sb-tbtn.ans { position: relative; }
+.sb-tbtn.ans::after { content: attr(data-rank); position: absolute; right: 6px; top: 4px; font-size: 16px; color: #ffd060; }
+.sb-agrid span.ans { background: #1f9a3a; border-color: #8dffa8; color: #fff; animation: pulse .8s infinite; }
+
+/* ===== 共通：扇形の手札 ===== */
+.cc-hand, .hand-fan { position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; align-items: flex-end; padding: 0 30px; max-width: 98vw; }
+.hand-card { position: relative; width: 104px; height: 156px; margin: 0 -9px; padding: 0; border: none; background: none; cursor: pointer;
+  transform-origin: 50% 140%; transform: rotate(var(--rot, 0deg)) translateY(var(--drop, 0px)); transition: transform .14s ease-out, filter .14s; flex-shrink: 0; }
+.hand-card img { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 6px 14px rgba(0,0,0,.85); border-radius: 4px; }
+.hand-card.locked { filter: brightness(.5) saturate(.6); cursor: help; }
+.hand-card.playable::after { content: ''; position: absolute; inset: -3px; border: 2px solid rgba(255,190,90,.75); border-radius: 6px; pointer-events: none; }
+.hand-card:hover, .hand-card.peek { transform: translateY(-62px) scale(1.4); z-index: 50 !important; filter: none; }
+.hand-card .hc-tip { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); width: 210px; padding: 6px 8px; background: rgba(8,4,3,.95); border: 1px solid var(--gold);
+  color: var(--text); font-size: 11px; line-height: 1.45; text-align: left; display: none; pointer-events: none; white-space: normal; }
+.hand-card:hover .hc-tip, .hand-card.peek .hc-tip { display: block; }
+.hand-card.new { animation: dealIn .28s ease-out; }
+.hand-card.leaving { transform: translateY(-90px) scale(.8); opacity: 0; transition: .3s; }
+.cc-turn { bottom: 186px; } .cc-badges { bottom: 160px; }
+/* ロビー：カードの出現率 */
+.w-opts summary { cursor: pointer; color: var(--gold); font-size: 13px; margin: 6px 0; }
+.w-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; margin: 6px 0 10px; }
+.w-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.w-l { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-row input { width: 52px; padding: 2px 4px; font-size: 13px; text-align: center; }
+.w-p { width: 44px; text-align: right; color: var(--dim); font-size: 11px; }
+
+/* ===== LUCK BUTTON ===== */
+.lb-top { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); pointer-events: none; }
+.lb-risk { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.65); border: 2px solid var(--line); padding: 6px 16px; white-space: nowrap; }
+.lb-risk .k { font-size: 11px; color: var(--dim); }
+.lb-risk b { font-family: "Courier New", monospace; font-size: 30px; color: #f4f0e8; margin-right: 8px; }
+.lb-risk b.o { color: #ff5a3a; }
+.lb-risk b.p { color: var(--gold); }
+.lb-risk b.p.hot { color: #ff4a3a; animation: pulse .9s infinite; }
+.lb-panel { position: absolute; right: 14px; bottom: 14px; background: rgba(12,8,6,.85); border: 2px solid var(--line); padding: 8px; }
+.lb-panel.on { border-color: var(--gold); box-shadow: 0 0 18px rgba(216,176,106,.35); }
+.lb-ph { font-size: 11px; color: var(--gold); text-align: center; margin-bottom: 4px; letter-spacing: .1em; }
+.lb-grid { display: grid; grid-template-columns: repeat(4, 46px); gap: 6px; }
+.lb-b { height: 46px; border-radius: 50%; border: 3px solid #2a2a2a; background: radial-gradient(circle at 40% 35%, #ffffff, #d8d4cc); color: #333; font-family: "Courier New", monospace; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 0 10px rgba(255,250,235,.5); }
+.lb-b:disabled { cursor: default; }
+.lb-panel.on .lb-b:not(:disabled):hover { transform: scale(1.1); box-shadow: 0 0 16px rgba(255,230,140,.9); }
+.lb-b.dark { background: #1a1a1a; color: #444; box-shadow: none; }
+.lb-b.ana { background: radial-gradient(circle at 40% 35%, #fff2a0, #ffc400); box-shadow: 0 0 12px rgba(255,196,0,.8); }
+.lb-b.safe { background: radial-gradient(circle at 40% 35%, #b0ffc0, #30d060); box-shadow: 0 0 12px rgba(48,255,96,.8); }
+.lb-b.bad { background: radial-gradient(circle at 40% 35%, #ffb0a0, #ff2a1a); box-shadow: 0 0 14px rgba(255,42,26,.9); color: #fff; }
+.lb-b.sel { background: radial-gradient(circle at 40% 35%, #fff8c0, #ffe070); animation: pulse .25s infinite; }
+@media (max-width: 900px) { .lb-grid { grid-template-columns: repeat(4, 36px); } .lb-b { height: 36px; font-size: 12px; } }
