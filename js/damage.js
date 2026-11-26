@@ -54,10 +54,11 @@ export const DAMAGE_MODES = {
 export const COMMON_PENALTY_OPTIONS = [
   { key: 'survivors', label: '生存人数', type: 'number', min: 1, max: 5, default: 1,
     note: 'この人数まで減ったらゲーム終了（参加人数未満まで）' },
+  { key: 'autoShoot', label: '自動で引き金を引く', type: 'bool', default: false, note: 'ONなら敗者の引き金は自動で引かれる' },
 ];
 
 export function defaultDamageSettings() {
-  const out = { mode: 'life', survivors: 1 };
+  const out = { mode: 'life', survivors: 1, autoShoot: false };
   for (const k in DAMAGE_MODES) for (const o of DAMAGE_MODES[k].options) out[o.key] = o.default;
   return out;
 }

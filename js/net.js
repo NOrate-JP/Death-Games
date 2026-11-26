@@ -105,7 +105,7 @@ export class LocalRoom {
     for (const [k, v] of Object.entries(p)) {
       const ks = k.split('/'); let o = this.data.settings;
       ks.slice(0, -1).forEach((x) => { o = o[x] = o[x] || {}; });
-      o[ks[ks.length - 1]] = v;
+      if (v === null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = v;
     }
     this.emit();
   }

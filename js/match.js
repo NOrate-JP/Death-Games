@@ -60,14 +60,16 @@ function declareLoser(m) {
   m.phase = 'loser';
   m.loser.times = Math.max(1, m.loser.times || 1);
   m.loser.left = m.loser.times;
-  pushEvent(m, { t: 'loser', uid: m.loser.uid, text: m.loser.text || '', mode: m.dmg.mode, round: m.round, times: m.loser.times, left: m.loser.left });
+  pushEvent(m, { t: 'loser', uid: m.loser.uid, text: m.loser.text || '', mode: m.dmg.mode, round: m.round, times: m.loser.times, left: m.loser.left, fatal: !!m.loser.fatal });
 }
 
 // 敗者が自分で引き金を引く
 export function shoot(m, uid) {
   if (m.phase !== 'loser' || !m.loser || m.loser.uid !== uid) throw new Error('not your shot');
   const mode = DAMAGE_MODES[m.dmg.mode];
-  const res = mode.apply(m, uid);
+  // m.loser.fatal … 即死（ライフ等に関係なく死亡）
+  const res = m.loser.fatal ? { hit: true, dead: true, fatal: true, lifeAfter: 0, prob: 1, dmg: 0 } : mode.apply(m, uid);
+  if (m.loser.fatal) m.life[uid] = 0;
   m.loser.left = (m.loser.left ?? 1) - 1;
   m.phase = 'execution';
   m.exec = { uid, ...res };

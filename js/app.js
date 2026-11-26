@@ -205,6 +205,7 @@ const App = {
     $('#gameOptsTitle').textContent = rules.meta.name + ' の設定';
     $('#gameOpts').innerHTML = rules.meta.options.map((o) => optRow(o, go[o.key], host, 'g')).join('');
     bindOpts($('#gameOpts'), 'g', (k, v) => this.room.updateSettings({ [`gameOpts/${s.gameId}/${k}`]: v }), this.room);
+    this.renderWeights(rules, go, host, s.gameId);
     // ダメージ方式
     const dm = s.damage;
     $('#dmgModes').innerHTML = Object.entries(DAMAGE_MODES).map(([k, m]) => `
@@ -247,6 +248,27 @@ const App = {
     $('#btnLeave').onclick = () => this.leave();
     $('#btnCopy').onclick = () => { navigator.clipboard?.writeText(location.origin + location.pathname + '?room=' + this.room.code); $('#btnCopy').textContent = 'コピーしました'; setTimeout(() => ($('#btnCopy').textContent = '招待URLをコピー'), 1500); };
     $('#btnRules').onclick = () => this.showRules(s.gameId);
+  },
+
+  // 高度な設定：カードの出現率（そのカードの値 ÷ 全カードの合計）
+  renderWeights(rules, go, host, gameId) {
+    const box = $('#weightOpts');
+    const cards = rules.meta.cards;
+    if (!cards) { box.innerHTML = ''; return; }
+    const w = (id) => (go.weights?.[id] ?? 10);
+    const sum = cards.reduce((a, c) => a + Math.max(0, w(c.id)), 0) || 1;
+    const open = box.querySelector('details')?.open;
+    box.innerHTML = `<details ${open ? 'open' : ''}><summary>高度な設定：カードの出現率</summary>
+      <div class="w-grid">${cards.map((c) => `<label class="w-row"><span class="w-l">${esc(c.label)}</span>
+        <input type="number" min="0" max="99" value="${w(c.id)}" data-w="${c.id}" ${host ? '' : 'disabled'}>
+        <span class="w-p">${(Math.max(0, w(c.id)) / sum * 100).toFixed(1)}%</span></label>`).join('')}</div>
+      ${host ? '<button class="btn ghost sm" id="wReset">デフォルトに戻す（全部10）</button>' : ''}</details>`;
+    box.querySelectorAll('input[data-w]').forEach((inp) => (inp.onchange = () => {
+      const v = Math.max(0, Math.min(99, Math.round(+inp.value || 0)));
+      this.room.updateSettings({ [`gameOpts/${gameId}/weights/${inp.dataset.w}`]: v });
+    }));
+    const r = box.querySelector('#wReset');
+    if (r) r.onclick = () => this.room.updateSettings({ [`gameOpts/${gameId}/weights`]: null });
   },
 
   async startGame() {
@@ -418,7 +440,8 @@ const App = {
     for (const u of m.seats) sc.setSeatStatus(u, { active: u === ev.uid });
     await this.banner(`${nm} の負け`, (ev.text || '') + (ev.times > 1 && !(ev.text || '').includes('ペナルティ') ? `　ペナルティ ${ev.times}回` : ''), 2800, 'red');
     $('#game').classList.add('exec');
-    this.caption(isMe ? 'あなたの番だ。自分のタイミングで引き金を引け。' : `${nm} がリボルバーを手に取った…`);
+    if (ev.fatal) this.popText('ONEHIT — 即死', 'r');
+    this.caption(m.dmg.autoShoot ? `${nm} の頭に銃口が向けられた…` : (isMe ? 'あなたの番だ。自分のタイミングで引き金を引け。' : `${nm} がリボルバーを手に取った…`));
     await sc.raiseGun(ev.uid, isMe);
   },
 
@@ -428,7 +451,7 @@ const App = {
     const revolverMode = ev.mode === 'revolver';
     this.hideShoot();
     $('#game').classList.add('exec');
-    this.caption(revolverMode ? `実弾の確率 ${Math.round(ev.prob * 100)}%` : (ev.mode === 'roundlife' ? `ダメージ ${ev.dmg}` : ''));
+    this.caption(ev.fatal ? '即死' : revolverMode ? `実弾の確率 ${Math.round(ev.prob * 100)}%` : (ev.mode === 'roundlife' ? `ダメージ ${ev.dmg}` : ''));
     sfx.heartbeat();
     await sc.wait(400);
     await sc.fire({
@@ -505,7 +528,7 @@ const App = {
       this.scene.setAlarm(0.45);
       this.scene.raiseGun(actor, actor === this.uid, true);
       $('#game').classList.add('exec');
-      if (mine) this.showShoot(); else this.hideShoot();
+      if (mine && !m.dmg.autoShoot) this.showShoot(); else this.hideShoot();
     } else this.hideShoot();
     if (m.phase === 'over' && !this.resultShown) this.showResult({ winners: m.winners });
     this.drive();
@@ -537,14 +560,15 @@ const App = {
     const a = currentActor(m); if (!a) return;
     const mem = this.data?.members?.[a];
     const offline = !mem || mem.online === false;
-    if (!m.cpu[a] && !offline) return;
+    const auto = m.phase === 'loser' && m.dmg.autoShoot;
+    if (!m.cpu[a] && !offline && !auto) return;
     const key = `p${m.eid}:${a}:${offline}`; if (this.driverKey === key) return; this.driverKey = key;
     let delay = m.cpu[a] ? 650 + Math.random() * 700 : 4000;
-    if (m.phase === 'loser') delay = m.cpu[a] ? 1500 + Math.random() * 2500 : 7000; // CPUも少し溜めてから撃つ
+    if (m.phase === 'loser') delay = auto ? 1800 : m.cpu[a] ? 1500 + Math.random() * 2500 : 7000; // CPUも少し溜めてから撃つ
     setTimeout(() => {
       if (!this.match || this.match.eid !== m.eid) return;
       const mem2 = this.data?.members?.[a];
-      if (!m.cpu[a] && mem2 && mem2.online !== false) { this.driverKey = null; return; }
+      if (!m.cpu[a] && !auto && mem2 && mem2.online !== false) { this.driverKey = null; return; }
       this.room.transactGame((mm) => {
         if (mm.eid !== m.eid) return;
         const act = mm.phase === 'loser' ? { type: 'shoot' } : getRules(mm.gameId).cpuAction(mm, a);
