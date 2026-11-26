@@ -427,3 +427,4 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .lb-b.bad { background: radial-gradient(circle at 40% 35%, #ffb0a0, #ff2a1a); box-shadow: 0 0 14px rgba(255,42,26,.9); color: #fff; }
 .lb-b.sel { background: radial-gradient(circle at 40% 35%, #fff8c0, #ffe070); animation: pulse .25s infinite; }
 @media (max-width: 900px) { .lb-grid { grid-template-columns: repeat(4, 36px); } .lb-b { height: 36px; font-size: 12px; } }
+.sb-standby { font-family: var(--title); font-size: 64px; color: #8dffa8; letter-spacing: .2em; animation: pulse 1.4s infinite; }

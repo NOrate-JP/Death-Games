@@ -65,11 +65,12 @@ const OPS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
 
 // ---------- 問題生成 ----------
 function genCube() {
-  const n = pick([3, 3, 4]);
+  const n = pick([4, 4, 5]); // 土台 4×4 / 5×5
+  const maxH = n === 4 ? 5 : 4;
   for (;;) {
-    const grid = Array.from({ length: n }, () => Array.from({ length: n }, () => (Math.random() < 0.18 ? 0 : rint(1, n === 3 ? 4 : 3))));
+    const grid = Array.from({ length: n }, () => Array.from({ length: n }, () => (Math.random() < 0.2 ? 0 : rint(1, maxH))));
     const total = grid.flat().reduce((a, b) => a + b, 0);
-    if (total >= 6 && total <= 26) return { type: 'cube', grid, answer: String(total), show: String(total) };
+    if (total >= 18 && total <= 60) return { type: 'cube', grid, answer: String(total), show: String(total) };
   }
 }
 function genAlpha() {
@@ -114,7 +115,7 @@ function genMath() {
 const GEN = { cube: genCube, alpha: genAlpha, scroll: genScroll, touch: genTouch, math: genMath };
 
 // CPUの解答時間（ms）と正答率の目安
-const CPU_T = { cube: [7000, 22000], alpha: [6000, 18000], scroll: [4500, 14000], touch: [7000, 15000], math: [9000, 30000] };
+const CPU_T = { cube: [12000, 32000], alpha: [6000, 18000], scroll: [4500, 14000], touch: [7000, 15000], math: [9000, 30000] };
 
 // 判定待ち時間：決着しそうな解答が届いてから、この間に届いた解答も「押した時刻」順で比べる
 export const GRACE_MS = 1000;
@@ -133,9 +134,6 @@ function startQuestion(m, players, sudden) {
   const type = pick(types);
   m.gs = { ...(m.gs || {}), lastType: type };
   const q = GEN[type]();
-  const introAt = now() + 900;
-  const lead = o.surprise ? rint(2500, 7000) : 5200; // 形式表示+3カウント / Ready…
-  const startAt = introAt + lead;
   const status = {};
   players.forEach((u) => { status[u] = 'thinking'; });
   // CPUの行動予定
@@ -149,9 +147,10 @@ function startQuestion(m, players, sudden) {
     steps.push({ at: t, ok: true });
     cpuPlan[u] = steps;
   }
-  m.sub = { phase: 'live', q, introAt, startAt, limit: (o.timeLimit || 90) * 1000, players: players.slice(), sudden: !!sudden,
+  // まず全員の準備（モニター設置・カメラのズーム）を待つ。揃ったら sb_start でカウント開始
+  m.sub = { phase: 'prep', q, prepAt: now(), ready: {}, introAt: null, startAt: null, limit: (o.timeLimit || 90) * 1000, players: players.slice(), sudden: !!sudden,
     status, subs: [], pendingUntil: null, cpuPlan, cpuStep: {} };
-  pushEvent(m, { t: 'sb_setup', qtype: type, q: publicQ(q), introAt, startAt, surprise: !!o.surprise, sudden: !!sudden, limit: m.sub.limit, players: players.slice() });
+  pushEvent(m, { t: 'sb_setup', qtype: type, q: publicQ(q), surprise: !!o.surprise, sudden: !!sudden, limit: m.sub.limit, players: players.slice() });
 }
 
 // 出題データ（答えは含めない）
@@ -210,8 +209,28 @@ function settle(m) {
   startQuestion(m, d.players, true);
 }
 
+export const PREP_TIMEOUT = 12000; // 準備完了が来ない人（切断など）を待つ上限
+
+function goLive(m) {
+  const s = m.sub, o = m.opts;
+  s.phase = 'live';
+  s.introAt = now() + 400;
+  s.startAt = s.introAt + (o.surprise ? rint(2500, 7000) : 5200); // 形式表示+3カウント / Ready…
+  pushEvent(m, { t: 'sb_start', introAt: s.introAt, startAt: s.startAt });
+}
+
+function allReady(m) {
+  const s = m.sub;
+  return s.players.every((u) => m.cpu[u] || !m.alive[u] || s.ready[u]);
+}
+
 export function applyAction(m, uid, a) {
   const s = m.sub, o = m.opts;
+  if (s && s.phase === 'prep') {
+    if (a.type === 'ready') { s.ready[uid] = true; if (allReady(m)) goLive(m); return; }
+    if (a.type === 'forceStart') { if (!allReady(m) && now() < s.prepAt + PREP_TIMEOUT) throw new Error('not yet'); return goLive(m); }
+    throw new Error('not live');
+  }
   if (!s || s.phase !== 'live') throw new Error('not live');
   if (a.type === 'settle') {
     if (!s.pendingUntil || now() < s.pendingUntil) throw new Error('not yet');
@@ -262,8 +281,15 @@ function wrongValue(q) {
 export function pendingAuto(m, t) {
   const s = m.sub;
   const out = { due: [], nextAt: null };
-  if (m.phase !== 'round' || !s || s.phase !== 'live') return out;
   const consider = (at) => { if (out.nextAt === null || at < out.nextAt) out.nextAt = at; };
+  if (m.phase === 'round' && s?.phase === 'prep') {
+    // 人間が全員CPUなら即開始、切断者がいればタイムアウトで開始
+    if (allReady(m)) out.due.push({ uid: null, action: { type: 'forceStart' }, force: true });
+    else if (t >= s.prepAt + PREP_TIMEOUT) out.due.push({ uid: null, action: { type: 'forceStart' } });
+    else consider(s.prepAt + PREP_TIMEOUT);
+    return out;
+  }
+  if (m.phase !== 'round' || !s || s.phase !== 'live') return out;
   for (const [u, plan] of Object.entries(s.cpuPlan || {})) {
     if (!m.alive[u] || s.status[u] === 'escape' || s.status[u] === 'miss') continue;
     const k = s.cpuStep[u] || 0; const st = plan[k]; if (!st) continue;
@@ -286,7 +312,8 @@ export function applyAuto(m, d) {
 
 export function describeEvent(ev, name) {
   switch (ev.t) {
-    case 'sb_setup': return `${ev.sudden ? '【サドンデス】' : ''}出題：${QTYPES[ev.qtype].name}`;
+    case 'sb_setup': return `${ev.sudden ? '【サドンデス】' : ''}出題準備…`;
+    case 'sb_start': return '出題開始';
     case 'sb_status':
       if (ev.status === 'escape') return `${name(ev.uid)} Escape!（${(ev.ms / 1000).toFixed(3)}秒）`;
       return `${name(ev.uid)} Miss!${ev.retry ? '（再挑戦）' : ''}`;

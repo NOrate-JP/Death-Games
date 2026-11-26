@@ -49,6 +49,7 @@ export const sfx = {
     tone({ f0: 120, f1: 30, dur: 0.6, vol: 0.9 });
   },
   heartbeat() { tone({ f0: 70, f1: 40, dur: 0.12, vol: 0.5 }); setTimeout(() => tone({ f0: 60, f1: 35, dur: 0.14, vol: 0.4 }), 180); },
+  thud() { tone({ f0: 110, f1: 40, dur: 0.25, vol: 0.5 }); burst({ dur: 0.08, freq: 600, vol: 0.4 }); },
   rattle(n = 10) { for (let i = 0; i < n; i++) setTimeout(() => burst({ dur: 0.03, freq: 1800 + Math.random() * 2500, type: 'bandpass', q: 3, vol: 0.25 }), i * 45 + Math.random() * 30); },
   roll() { for (let i = 0; i < 5; i++) setTimeout(() => burst({ dur: 0.04, freq: 2500 + Math.random() * 1500, type: 'bandpass', q: 2, vol: 0.3 }), i * 70); },
   siren(sec = 3.2) {

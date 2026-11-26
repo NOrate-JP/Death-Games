@@ -40,6 +40,7 @@ class LuckButtonView {
     this.buildDevice();
     this.buildFinger();
     this.buildHud();
+    this.pulseMarkers();
     sc.onPick = (d) => { if (d && d.lbButton !== undefined) this.tryPress(d.lbButton); };
     sc.onHover = (d) => {
       const i = d && d.lbButton !== undefined ? d.lbButton : -1;
@@ -78,6 +79,15 @@ class LuckButtonView {
       b.userData = { lbButton: i };
       top.add(b);
       this.buttons.push(b);
+      // ANALYZE / X-RAY 用の目印（光の柱＋リング）
+      const mk = new THREE.Group(); mk.visible = false;
+      const beamMat = new THREE.MeshBasicMaterial({ color: 0xffd000, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.036, 0.3, 12, 1, true), beamMat); beam.position.y = 0.16; mk.add(beam);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd000, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const mring = new THREE.Mesh(new THREE.RingGeometry(0.044, 0.06, 20), ringMat); mring.rotation.x = -Math.PI / 2; mring.position.y = 0.016; mk.add(mring);
+      mk.position.copy(b.position);
+      top.add(mk);
+      (this.markers = this.markers || []).push({ g: mk, beamMat, ringMat });
       sc.pickables.push(b);
     }
     this.glow = new THREE.PointLight(0xfff4e0, 1.2, 1.4, 2); this.glow.position.set(0, 0.3, -0.1); g.add(this.glow);
@@ -99,8 +109,8 @@ class LuckButtonView {
       const f = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.035, 0.03), skin); f.position.set(0.03 + k * 0.022, 0.085, 0.012); h.add(f);
     }
     const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.045, 0.02), skin); thumb.position.set(-0.03, 0.11, 0.015); thumb.rotation.z = 0.6; h.add(thumb);
-    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.04), skin); wrist.position.set(0.025, 0.19, -0.01); h.add(wrist);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.065), sleeve); arm.position.set(0.025, 0.46, -0.01); h.add(arm);
+    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.066, 0.05, 0.04), skin); wrist.position.set(0.025, 0.185, -0.01); h.add(wrist);
+    const cuff = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 0.055), sleeve); cuff.position.set(0.025, 0.22, -0.01); h.add(cuff); // 腕は描かず手首まで
     h.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     const pivot = new THREE.Group(); pivot.add(h);
     pivot.visible = false;
@@ -145,13 +155,28 @@ class LuckButtonView {
     f.visible = false;
   }
 
+  setMarker(i, color) {
+    const mk = this.markers[i]; if (!mk) return;
+    mk.g.visible = color !== null;
+    if (color !== null) { mk.beamMat.color.setHex(color); mk.ringMat.color.setHex(color); }
+  }
+  pulseMarkers() {
+    const t = performance.now() / 1000;
+    for (const mk of this.markers || []) if (mk.g.visible) {
+      mk.beamMat.opacity = 0.35 + 0.3 * Math.abs(Math.sin(t * 3));
+      mk.g.children[1].scale.setScalar(1 + 0.25 * Math.abs(Math.sin(t * 3)));
+    }
+    this._raf = requestAnimationFrame(() => this.pulseMarkers());
+  }
+
   setButton(i, state) {
     const b = this.buttons[i]; if (!b) return;
-    const map = { idle: [COL.idle, 0.9], hover: [COL.hover, 1.7], dark: [COL.dark, 0], out: [COL.out, 1.6], ana: [COL.ana, 1.3], safe: [COL.safe, 1.3], bad: [COL.bad, 1.5] };
+    const map = { idle: [COL.idle, 0.9], hover: [COL.hover, 1.7], dark: [COL.dark, 0], out: [COL.out, 1.6], ana: [COL.ana, 2.6], safe: [COL.safe, 2.4], bad: [COL.bad, 2.6] };
     const [col, it] = map[state] || map.idle;
     b.material.emissive.setHex(col); b.material.emissiveIntensity = it;
     b.material.color.setHex(state === 'dark' ? 0x2a2a2a : 0xffffff);
     b.position.y = state === 'dark' || state === 'out' ? 0.042 : 0.056;
+    this.setMarker(i, { ana: COL.ana, safe: COL.safe, bad: COL.bad }[state] ?? null);
   }
 
   // ANALYZE / X-RAY の光：使った本人の画面で、そのターンにボタンを押すまでの間だけ
@@ -172,8 +197,7 @@ class LuckButtonView {
     const canP = this.canPress(m);
     for (let i = 0; i < NB; i++) {
       if (i === this.pressing) continue;
-      if (this.revealOuts && this.revealOuts.includes(i)) { this.setButton(i, s.pressed[i] ? 'out' : 'bad'); continue; }
-      if (s.pressed[i]) { this.setButton(i, 'dark'); continue; }
+      if (s.pressed[i]) { this.setButton(i, i === this.outIdx ? 'out' : 'dark'); continue; }
       if (xr[i] !== undefined) this.setButton(i, xr[i] ? 'bad' : 'safe');
       else if (ana.has(i)) this.setButton(i, 'ana');
       else this.setButton(i, canP && i === this.hover ? 'hover' : 'idle');
@@ -300,6 +324,8 @@ class LuckButtonView {
     if (!this.inputOn || !m || !canUseCard(m, me)) return;
     this.inputOn = false;
     btn.classList.remove('peek'); btn.classList.add('leaving');
+    for (const [k, v] of this.handEls) if (v === btn) this.handEls.delete(k); // 使ったカードの要素は再利用しない
+    setTimeout(() => btn.remove(), 320);
     this.el.hand.querySelectorAll('.hand-card').forEach((b) => b.classList.add('locked'));
     this.ctx.send({ type: 'card', idx: +btn.dataset.idx, card: btn.dataset.card });
   }
@@ -311,8 +337,7 @@ class LuckButtonView {
   setInput(on, m) {
     this.inputOn = on; this.lastM = m;
     if (on) this.pressing = -1;
-    const myTurn = !!(m?.phase === 'round' && m.sub?.turn?.uid === this.ctx.me);
-    this.focus(on || (myTurn && this.pressing >= 0));
+    this.focus(on || this.pressing >= 0); // 選ぶ→押す→結果まで同じカメラ
     this.renderHand(m); this.paintButtons(m);
   }
   sync(m) {
@@ -320,8 +345,8 @@ class LuckButtonView {
     const s = m.sub; if (!s?.pressed) return;
     this.handLimit = Infinity;
     for (const u of m.seats) this.ctx.scene.setHandCount(u, m.alive[u] ? (s.hands[u] || []).length : 0);
-    if (m.phase === 'round' && s.turn) { this.moveDevice(s.turn.uid, this.atUid === null); this.showTurn(m, s.turn.uid, s.turn); this.revealOuts = null; }
-    else { this.showTurn(m, null); this.revealOuts = s.outs.slice(); this.focus(false); }
+    if (m.phase === 'round' && s.turn) { this.moveDevice(s.turn.uid, this.atUid === null); this.showTurn(m, s.turn.uid, s.turn); }
+    else { this.showTurn(m, null); this.focus(false); }
     if (this.pressing >= 0 && !(m.phase === 'round' && s.turn?.uid === this.ctx.me)) this.pressing = -1;
     this.renderRisk(m);
     this.paintButtons(m);
@@ -334,7 +359,7 @@ class LuckButtonView {
     this.lastM = m;
     switch (ev.t) {
       case 'lb_setup': {
-        this.revealOuts = null; this.pressing = -1;
+        this.outIdx = -1; this.pressing = -1;
         for (let i = 0; i < NB; i++) this.setButton(i, 'dark');
         this.lamp.material.color.setHex(0x401010);
         await this.moveDevice(null);
@@ -393,9 +418,10 @@ class LuckButtonView {
         this.paintButtons(m); // ここで秘密の光は消える
         await this.fingerPress(ev.uid, i, async () => {
           if (ev.out) {
+            this.outIdx = i;
             this.setButton(i, 'out');
             this.lamp.material.color.setHex(0xff2010);
-            sfx.bust();
+            this.ctx.alarmNow(); // 押した瞬間にサイレン
             this.ctx.popText('OUT', 'r');
             await sc.wait(500);
           } else {
@@ -406,15 +432,13 @@ class LuckButtonView {
         });
         this.pressing = -1;
         if (m.sub?.pressed) this.renderRisk(m);
+        if (!ev.out && !(m.phase === 'round' && m.sub?.turn?.uid === me)) this.focus(false);
         return;
       }
       case 'lb_out': {
         this.showTurn(m, null);
+        await sc.wait(600);
         this.focus(false);
-        this.revealOuts = ev.outs;
-        this.paintButtons(m);
-        if (ev.outs.length > 1) this.ctx.popText(`OUTボタンは ${ev.outs.map((x) => x + 1).join('・')} 番だった`, 'r');
-        await sc.wait(700);
         return;
       }
       case 'lb_danger': {
@@ -430,6 +454,7 @@ class LuckButtonView {
   }
 
   dispose() {
+    cancelAnimationFrame(this._raf);
     const sc = this.ctx.scene;
     sc.onPick = null; sc.onHover = null; sc.pickables.length = 0;
     sc.scene.remove(this.finger);

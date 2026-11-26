@@ -52,7 +52,7 @@ class SprintBrainView {
   }
 
   // ---------- 3D：ブラウン管モニター ----------
-  ensureMonitor(uid) {
+  ensureMonitor(uid, drop = false) {
     if (this.monitors.has(uid)) return this.monitors.get(uid);
     const sc = this.ctx.scene;
     const g = new THREE.Group();
@@ -74,6 +74,16 @@ class SprintBrainView {
     const signBack = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.02), dark); signBack.position.set(0, 0.44, 0.005); g.add(signBack);
     const glow = new THREE.PointLight(0xffffff, 0.5, 0.9, 2); glow.position.set(0, 0.23, -0.35); g.add(glow);
     sc.scene.add(g);
+    if (drop) {
+      // 上から降りてきてテーブルに設置される
+      const y0 = g.position.y;
+      g.position.y = y0 + 1.6; g.visible = false;
+      setTimeout(() => {
+        g.visible = true;
+        sc.tween(700, (t) => { const b = t < 0.8 ? (t / 0.8) ** 2 : 1 - Math.sin((t - 0.8) / 0.2 * Math.PI) * 0.03; g.position.y = y0 + 1.6 * (1 - b); })
+          .then(() => { g.position.y = y0; sfx.thud?.(); sfx.deal(); });
+      }, drop === true ? 0 : drop);
+    }
     const mon = { g, cv, tex, glow, status: null };
     this.monitors.set(uid, mon);
     this.setMonitor(uid, 'ready');
@@ -144,6 +154,12 @@ class SprintBrainView {
     if (this.ctx.me && s.status[this.ctx.me]) this.myStatus = s.status[this.ctx.me];
     this.renderSide(m);
     // 途中参加などで問題が出ていない場合
+    if (m.phase === 'round' && s.phase === 'prep') {
+      for (const u of m.seats) if (m.alive[u]) this.ensureMonitor(u);
+      if (!this._standbyFor || this._standbyFor !== s.prepAt) this.showStandby({ players: s.players, sudden: s.sudden });
+      this._standbyFor = s.prepAt;
+      if (s.status[this.ctx.me] !== undefined && !s.ready[this.ctx.me]) this.sendReady(m);
+    }
     if (m.phase === 'round' && s.phase === 'live' && this.qKey !== s.startAt) this.openQuestion(m, s.q, true);
     if (s.phase !== 'live' && this.qKey && !this._ending) { this.closeQuestion(false); }
     this.updateFoot();
@@ -210,6 +226,22 @@ class SprintBrainView {
     this.showStrip(`${extra}<div class="k">答えはこれでした</div><div class="v">${ev.answer}</div>${rank ? `<div class="rk">${rank}</div>` : ''}`, 'answer');
   }
 
+  // 全員の準備（ズーム完了）を待つ画面
+  showStandby(ev) {
+    this.clearWidget();
+    this.q = null; this.qKey = null;
+    this.el.type.textContent = ev.sudden ? 'SUDDEN DEATH' : 'STANDBY';
+    this.el.crt.classList.toggle('sudden', !!ev.sudden);
+    this.el.body.appendChild(el('div', 'sb-intro', `${ev.sudden ? '<div class="sb-sudden">SUDDEN DEATH</div>' : ''}<div class="sb-standby">STANDBY</div><div class="sb-desc">全員の準備が整うのを待っています…</div>`));
+    this.showCrt(true);
+  }
+  sendReady(m) {
+    const key = m.sub?.prepAt ?? 'x';
+    if (this._readyKey === key) return;
+    this._readyKey = key;
+    this.ctx.send({ type: 'ready' }, { quiet: true });
+  }
+
   closeQuestion(animate) {
     this.hideStrip();
     this.clearWidget();
@@ -225,18 +257,34 @@ class SprintBrainView {
       case 'sb_setup': {
         this._ending = false;
         this._shown = {};
+        this.pendingQ = ev;
+        // モニター設置（初回は上から降りてくる）
+        let k = 0, dropped = false;
+        for (const u of m.seats) {
+          if (!m.alive[u]) continue;
+          if (!this.monitors.has(u)) { this.ensureMonitor(u, 1 + 260 * k++); dropped = true; }
+        }
+        if (dropped) await sc.wait(260 * k + 800);
         for (const [u] of this.monitors) if (!ev.players.includes(u)) this.setMonitor(u, m.alive[u] ? 'safe' : 'off');
-        for (const u of m.seats) if (m.alive[u] && !ev.players.includes(u)) { this.ensureMonitor(u); this.setMonitor(u, 'safe'); }
-        for (const u of ev.players) { this.ensureMonitor(u); this.setMonitor(u, 'thinking'); }
+        for (const u of ev.players) this.setMonitor(u, 'ready');
         const amPlayer = me && ev.players.includes(me);
         if (amPlayer) { if (!this.zoomed) await sc.setView(this.screenView(me), false, 1100); this.zoomed = true; }
-        else await sc.wait(500);
-        const fake = { ...m, sub: { ...(m.sub || {}), startAt: ev.startAt, surprise: ev.surprise, sudden: ev.sudden, limit: ev.limit, status: Object.fromEntries(ev.players.map((u) => [u, 'thinking'])), phase: 'live' } };
-        if (m.sub?.startAt === ev.startAt) fake.sub = { ...m.sub, surprise: ev.surprise };
-        this.el.crt.classList.toggle('sudden', !!ev.sudden);
+        else await sc.wait(400);
+        this.showStandby(ev);
+        if (amPlayer) this.sendReady(m);
+        return;
+      }
+      case 'sb_start': {
+        const p = this.pendingQ || {};
+        const st = m.sub?.startAt === ev.startAt ? m.sub : null;
+        const players = p.players || Object.keys(m.sub?.status || {});
+        const fake = { ...m, sub: { ...(st || m.sub || {}), startAt: ev.startAt, surprise: p.surprise ?? m.opts.surprise, sudden: p.sudden, limit: p.limit ?? m.sub?.limit,
+          status: st ? st.status : Object.fromEntries(players.map((u) => [u, 'thinking'])), phase: 'live' } };
+        for (const u of players) this.setMonitor(u, 'thinking');
+        this.el.crt.classList.toggle('sudden', !!p.sudden);
         this.lastM = fake;
         this.renderSide(fake);
-        await this.openQuestion(fake, ev.q, false);
+        await this.openQuestion(fake, p.q || m.sub.q, false);
         this.lastM = m;
         return;
       }

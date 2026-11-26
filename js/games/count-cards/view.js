@@ -216,6 +216,8 @@ class CountCardsView {
     this.inputOn = false;
     btn.classList.remove('peek');
     btn.classList.add('leaving');
+    for (const [k, v] of this.handEls) if (v === btn) this.handEls.delete(k); // 使ったカードの要素は再利用しない
+    setTimeout(() => btn.remove(), 320);
     this.el.hand.querySelectorAll('.hand-card').forEach((b) => b.classList.add('locked'));
     this.ctx.send({ type: 'play', idx, card: id, target });
   }

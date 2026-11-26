@@ -307,10 +307,11 @@ const App = {
     const mod = await GAMES[m.gameId].view();
     this.view = await mod.createView({
       scene: sc, hud: $('#gameHud'), me, name: (u) => m.names[u] || '?',
-      send: (a) => this.sendAction(a), banner: (t, s, ms, cls) => this.banner(t, s, ms, cls),
+      send: (a, opts) => this.sendAction(a, opts), banner: (t, s, ms, cls) => this.banner(t, s, ms, cls),
       popText: (t, cls) => this.popText(t, cls), choose: (t, o) => this.choose(t, o),
       reveal: (o) => this.reveal(o),
       now: () => this.room.now(),
+      alarmNow: () => { sc.setAlarm(true); sfx.siren(3.2); this._alarmPre = true; }, // ゲーム側で敗者確定の瞬間に警報
     });
     $('#hudGame').textContent = getRules(m.gameId).meta.name;
     $('#hudMode').textContent = DAMAGE_MODES[m.dmg.mode].name + (m.dmg.survivors > 1 ? `　／　生存枠 ${m.dmg.survivors}人` : '');
@@ -434,8 +435,8 @@ const App = {
       await sc.raiseGun(ev.uid, isMe);
       return;
     }
-    sc.setAlarm(true);
-    sfx.siren(3.2);
+    if (this._alarmPre) this._alarmPre = false; // 既に鳴らしている
+    else { sc.setAlarm(true); sfx.siren(3.2); }
     setTimeout(() => { if (this.scene === sc && this.match?.phase === 'loser') sc.setAlarm(0.45); }, 3300);
     for (const u of m.seats) sc.setSeatStatus(u, { active: u === ev.uid });
     await this.banner(`${nm} の負け`, (ev.text || '') + (ev.times > 1 && !(ev.text || '').includes('ペナルティ') ? `　ペナルティ ${ev.times}回` : ''), 2800, 'red');
@@ -534,8 +535,9 @@ const App = {
     this.drive();
   },
 
-  async sendAction(a) {
+  async sendAction(a, opts = {}) {
     const ok = await this.room.transactGame((m) => { applyAction(m, this.uid, a); return m; });
+    if (!ok && opts.quiet) return ok;
     if (!ok) {
       this.popText('操作が反映されませんでした', 'r');
       $('#shootBtn').disabled = false;
