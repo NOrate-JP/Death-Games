@@ -552,6 +552,31 @@ export class TableScene {
     });
     const up = () => { this.lookOff.dragging = false; };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    // クリック（ほぼ動かさずに離した）で3Dオブジェクトを選択
+    this.pickables = []; this.onPick = null;
+    let px = 0, py = 0;
+    cv.addEventListener('pointerdown', (e) => { px = e.clientX; py = e.clientY; });
+    cv.addEventListener('pointerup', (e) => {
+      if (!this.onPick || !this.pickables.length || Math.hypot(e.clientX - px, e.clientY - py) > 6) return;
+      const r = cv.getBoundingClientRect();
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+      const hit = ray.intersectObjects(this.pickables, false)[0];
+      if (hit) this.onPick(hit.object.userData);
+    });
+    // マウスを乗せた3Dオブジェクト（ボタンのハイライト用）
+    this.onHover = null;
+    let lastHover = null, hoverT = 0;
+    cv.addEventListener('pointermove', (e) => {
+      if (!this.onHover || this.lookOff.dragging) return;
+      const nowT = performance.now(); if (nowT - hoverT < 40) return; hoverT = nowT;
+      const r = cv.getBoundingClientRect();
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+      const hit = ray.intersectObjects(this.pickables, false)[0];
+      const d = hit ? hit.object.userData : null;
+      if (d !== lastHover) { lastHover = d; this.onHover(d); }
+    });
   }
 
   // ---------- 警報 ----------
