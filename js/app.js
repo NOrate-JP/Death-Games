@@ -375,8 +375,8 @@ const App = {
     try {
       while (this.queue.length && this.scene) {
         const ev = this.queue.shift();
-        this.log(ev);
         await this.animateEvent(ev);
+        this.log(ev); // 演出（判定）が終わってからログに出す
       }
     } catch (e) { console.error(e); }
     this.busy = false;

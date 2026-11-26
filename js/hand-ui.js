@@ -4,7 +4,8 @@
 export function makeHandCard({ img, label, tip, onPlay }) {
   const b = document.createElement('button');
   b.className = 'hand-card';
-  b.innerHTML = `<img src="${img}" alt="${label}" draggable="false"><div class="hc-tip"></div>`;
+  // マウス判定はボタン本体（動かない）。拡大するのは中身 .hc-in だけなので、ちらつかない
+  b.innerHTML = `<div class="hc-in"><img src="${img}" alt="${label}" draggable="false"><div class="hc-tip"></div></div>`;
   b.querySelector('.hc-tip').textContent = tip || '';
   b.addEventListener('pointerdown', (e) => { b._touch = e.pointerType !== 'mouse'; });
   b.addEventListener('click', (e) => {

@@ -87,6 +87,11 @@ class LuckButtonView {
       const mring = new THREE.Mesh(new THREE.RingGeometry(0.044, 0.06, 20), ringMat); mring.rotation.x = -Math.PI / 2; mring.position.y = 0.016; mk.add(mring);
       mk.position.copy(b.position);
       top.add(mk);
+      // マウスを合わせた時の赤いフチ
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.039, 0.007, 6, 24), new THREE.MeshBasicMaterial({ color: 0xff2a1a }));
+      rim.rotation.x = Math.PI / 2; rim.position.set(x, 0.062, z); rim.visible = false;
+      top.add(rim);
+      (this.rims = this.rims || []).push(rim);
       (this.markers = this.markers || []).push({ g: mk, beamMat, ringMat });
       sc.pickables.push(b);
     }
@@ -195,6 +200,7 @@ class LuckButtonView {
       if (k.kind === 'xray') xr[k.idx] = k.out;
     }
     const canP = this.canPress(m);
+    this.rims.forEach((r, i) => { r.visible = canP && i === this.hover && !s.pressed[i]; });
     for (let i = 0; i < NB; i++) {
       if (i === this.pressing) continue;
       if (s.pressed[i]) { this.setButton(i, i === this.outIdx ? 'out' : 'dark'); continue; }
