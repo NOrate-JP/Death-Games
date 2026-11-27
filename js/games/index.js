@@ -5,6 +5,7 @@ import * as countCardsRules from './count-cards/rules.js';
 import * as liarDiceRules from './liar-dice/rules.js';
 import * as sprintBrainRules from './sprint-brain/rules.js';
 import * as luckButtonRules from './luck-button/rules.js';
+import * as indianSumRules from './indian-sum/rules.js';
 import { bindRules } from '../match.js';
 
 export const GAMES = {
@@ -12,6 +13,7 @@ export const GAMES = {
   'liar-dice': { rules: liarDiceRules, view: () => import('./liar-dice/view.js') },
   'sprint-brain': { rules: sprintBrainRules, view: () => import('./sprint-brain/view.js') },
   'luck-button': { rules: luckButtonRules, view: () => import('./luck-button/view.js') },
+  'indian-sum': { rules: indianSumRules, view: () => import('./indian-sum/view.js') },
 };
 
 // ロビーに「COMING SOON」として表示するだけの枠

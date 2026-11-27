@@ -21,6 +21,8 @@ Firebase未設定でも「オフライン練習（CPU戦）」は遊べます。
 
 ## カード画像の差し替え
 
+INDIAN SUM は `assets/cards/indian-sum/` に n0〜n5 / n10 / n15 / n20 / nm5 / nm10 / night / x2 / max0 / q / back（.png）。
+
 LUCK BUTTON は `assets/cards/luck-button/` に skip.png / reverse.png / discard.png / double.png / danger.png / taboo.png / onehit.png / analyze.png / xray.png / shuffle.png / back.png を置くと差し替わります。
 
 
@@ -54,6 +56,7 @@ js/games/count-cards/  COUNT CARDS（cards.js 定義 / rules.js ルール / view
 js/games/liar-dice/    LIAR'S DICE（rules.js ルール / view.js 表示）
 js/games/sprint-brain/  SPRINT BRAIN（rules.js 問題生成・判定 / view.js モニター・各問題UI）
 js/games/luck-button/   LUCK BUTTON（rules.js ルール・カード / view.js ボタン装置・手札）
+js/games/indian-sum/    INDIAN SUM（rules.js ルール・合計計算・CPU / view.js おでこのカード・判定演出）
 js/hand-ui.js          カードゲーム共通の扇形手札（マウスオーバー/1回目タップで拡大＋効果テキスト）
 ```
 
@@ -132,3 +135,12 @@ export const firebaseConfig = {
 
 - ペナルティ「自動で引き金を引く」：ONなら敗者の引き金は約2秒後に自動
 - 高度な設定「カードの出現率」（COUNT CARDS / LUCK BUTTON）：各カードの値 ÷ 全カードの合計 が出現確率。デフォルトは全部10
+
+## INDIAN SUM 仕様メモ（コヨーテ日本語版準拠）
+
+- 36枚：1〜5 各4 / 10×3 / 15×2 / 20×1 / 0×3 / −5×2 / −10×1 / 夜0・×2・MAX→0・？ 各1
+- 合計の計算順：？（山札から1枚引いて置き換え）→ MAX→0（一番大きい数のカード1枚を0）→ 合計 → ×2
+- 宣言が合計を超えていたら宣言者の負け、ぴったり以下ならダウトした人の負け
+- 使ったカードは捨て札。山札切れで捨て札をシャッフル。夜カードが出たら次ラウンド開始時に全36枚で山札を作り直す
+- 次ラウンドは敗者から（死亡していれば次の席）。ライフは共通のペナルティ設定を使用
+- チャレンジの宣言名は「ダウト！」
