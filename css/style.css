@@ -519,8 +519,8 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .rd-pos b { font-size: 30px; color: #ffd27a; }
 .rd-qb { display: flex; gap: 6px; justify-content: center; }
 .rd-qb button { background: #2a1a14; color: var(--text); border: 1px solid var(--line); padding: 6px 12px; cursor: pointer; }
-.sel { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-.sel .toggle { min-width: 0; padding: 4px 8px; font-size: 12px; }
+.opt-sel { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.opt-sel .toggle { min-width: 0; padding: 4px 8px; font-size: 12px; }
 .w-sum { font-size: 12px; color: var(--gold); margin: -4px 0 8px; } .w-sum small { color: var(--dim); }
 .is-ci { display: flex; gap: 4px; }
 .is-c img { transition: transform .22s ease-in-out, filter .3s; }

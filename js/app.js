@@ -724,7 +724,7 @@ function optRow(o, val, enabled, prefix) {
   if (o.type === 'select') {
     const cur = val ?? o.default;
     return `<label class="opt"><span class="ol">${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span>
-      <span class="sel">${o.choices.map((c) => `<button class="toggle ${cur === c.value ? 'on' : ''}" data-${prefix}="${o.key}" data-type="select" data-v="${c.value}" ${dis}>${esc(c.label)}</button>`).join('')}</span></label>`;
+      <span class="opt-sel">${o.choices.map((c) => `<button class="toggle ${cur === c.value ? 'on' : ''}" data-${prefix}="${o.key}" data-type="select" data-v="${c.value}" ${dis}>${esc(c.label)}</button>`).join('')}</span></label>`;
   }
   return `<label class="opt"><span class="ol">${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span>
     <span class="num"><button class="mini" data-${prefix}="${o.key}" data-step="-1" ${dis}>−</button>
