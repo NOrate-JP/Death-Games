@@ -45,6 +45,17 @@ function drawFallback(id, def) {
     noise(g, CARD_W, CARD_H, 28);
     return c;
   }
+  if (def.dark) {
+    // ドクロ札（DEADなど）：黒地に赤
+    g.fillStyle = '#0c0606'; g.fillRect(0, 0, CARD_W, CARD_H);
+    g.strokeStyle = '#8a1010'; g.lineWidth = 5; g.strokeRect(9, 9, CARD_W - 18, CARD_H - 18);
+    g.lineWidth = 1.5; g.strokeRect(17, 17, CARD_W - 34, CARD_H - 34);
+    g.fillStyle = '#c01818'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `120px ${font}`; g.fillText('☠', CARD_W / 2, CARD_H / 2 - 20);
+    g.font = `40px ${font}`; g.fillText(def.label, CARD_W / 2, CARD_H - 70);
+    noise(g, CARD_W, CARD_H, 26);
+    return c;
+  }
   const sp = def.type === 'sp';
   g.fillStyle = sp ? '#cbb994' : '#ddd2b6'; g.fillRect(0, 0, CARD_W, CARD_H);
   // しみ

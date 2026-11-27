@@ -23,6 +23,8 @@ Firebase未設定でも「オフライン練習（CPU戦）」は遊べます。
 
 INDIAN SUM は `assets/cards/indian-sum/` に n0〜n5 / n10 / n15 / n20 / nm5 / nm10 / night / x2 / max0 / q / back（.png）。
 
+RUSSIAN DECK は `assets/cards/russian-deck/` に dead / revive / attack / give / cancel / shuffle / skip / search / ma〜me / back（.png）。
+
 LUCK BUTTON は `assets/cards/luck-button/` に skip.png / reverse.png / discard.png / double.png / danger.png / taboo.png / onehit.png / analyze.png / xray.png / shuffle.png / back.png を置くと差し替わります。
 
 
@@ -57,6 +59,7 @@ js/games/liar-dice/    LIAR'S DICE（rules.js ルール / view.js 表示）
 js/games/sprint-brain/  SPRINT BRAIN（rules.js 問題生成・判定 / view.js モニター・各問題UI）
 js/games/luck-button/   LUCK BUTTON（rules.js ルール・カード / view.js ボタン装置・手札）
 js/games/indian-sum/    INDIAN SUM（rules.js ルール・合計計算・CPU / view.js おでこのカード・判定演出）
+js/games/russian-deck/  RUSSIAN DECK（rules.js ルール・CANCEL受付・CPU / view.js 山札・CANCELバー・各種選択）
 js/hand-ui.js          カードゲーム共通の扇形手札（マウスオーバー/1回目タップで拡大＋効果テキスト）
 ```
 
@@ -151,3 +154,13 @@ export const firebaseConfig = {
 - 受け取った向きで相手の頭（65%）と上半身（35%）をなめらかに回す
 - CPUは各端末で、手番の人を見る／ときどき視線を外す動きをする
 - **Firebaseのルールに `looks` の項目を追加する必要あり**（database.rules.json 参照）
+
+## RUSSIAN DECK 仕様メモ
+
+- 毎ラウンド準備からやり直し。DEADは「生存者数÷2（切り上げ）」枚、REVIVEは全員に1枚＋余り（2〜3人は2枚、4人2枚、5人1枚、6人0枚）を山札へ
+- DEADを引いてREVIVEがあれば自動使用。戻す位置は本人だけが選び、他の人には見えない
+- CANCELはカードがプレイされるたびに全員へ3秒の受付バー（カード公開の演出ぶん開始を約1.2秒遅らせる）。CANCELされるとまた3秒。持っていない人は毎回待つ（情報が漏れない）
+- 自分のプレイにはCANCEL不可。自分のプレイへのCANCELにはCANCEL返し可（最後に出したのが自分でなければ使える）
+- ATTACKを受けている時のATTACKは「残りターン＋2」を次の人へ
+- GIVEは指名された人が渡すカードを選ぶ（CPU・切断者はREVIVEを優先的に残す）
+- 1枚のMATCHは効果なし（CANCEL受付もなし）

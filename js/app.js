@@ -311,6 +311,7 @@ const App = {
       popText: (t, cls) => this.popText(t, cls), choose: (t, o) => this.choose(t, o),
       reveal: (o) => this.reveal(o),
       now: () => this.room.now(),
+      getMatch: () => this.match, // 演出キューと関係なく最新の状態を見る用
       alarmNow: () => { sc.setAlarm(true); sfx.siren(3.2); this._alarmPre = true; }, // ゲーム側で敗者確定の瞬間に警報
     });
     $('#hudGame').textContent = getRules(m.gameId).meta.name;
@@ -595,7 +596,7 @@ const App = {
     }
     if (m.phase !== 'round' && m.phase !== 'loser') return;
     const rules = getRules(m.gameId);
-    if (m.phase === 'round' && rules.pendingAuto) return this.driveAuto();
+    if (m.phase === 'round' && rules.pendingAuto) this.driveAuto(); // 時刻で起きる処理（同時受付など）
     const a = currentActor(m); if (!a) return;
     const mem = this.data?.members?.[a];
     const offline = !mem || mem.online === false;
@@ -673,10 +674,10 @@ const App = {
     $('#popLayer').appendChild(el); setTimeout(() => el.remove(), 1400);
   },
   // 出されたカードを大きく見せる
-  reveal({ img, who, forced, ms = 900 }) {
+  reveal({ img, who, forced, ms = 900, text }) {
     const r = $('#reveal');
     $('#revealImg').src = img;
-    $('#revealWho').textContent = `${who}${forced ? '（RANDOM）' : ''} が出した`;
+    $('#revealWho').textContent = text ?? `${who}${forced ? '（RANDOM）' : ''} が出した`;
     r.classList.remove('on'); void r.offsetWidth; r.classList.add('on');
     return new Promise((res) => setTimeout(() => { r.classList.remove('on'); setTimeout(res, 150); }, ms));
   },
