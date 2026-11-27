@@ -203,7 +203,7 @@ const App = {
     const rules = getRules(s.gameId);
     const go = { ...defaultGameOptions(s.gameId), ...(s.gameOpts?.[s.gameId] || {}) };
     $('#gameOptsTitle').textContent = rules.meta.name + ' の設定';
-    $('#gameOpts').innerHTML = rules.meta.options.map((o) => optRow(o, go[o.key], host, 'g')).join('');
+    $('#gameOpts').innerHTML = rules.meta.options.filter((o) => !o.showIf || o.showIf(go)).map((o) => optRow(o, go[o.key], host, 'g')).join('');
     bindOpts($('#gameOpts'), 'g', (k, v) => this.room.updateSettings({ [`gameOpts/${s.gameId}/${k}`]: v }), this.room);
     this.renderWeights(rules, go, host, s.gameId);
     // ダメージ方式
@@ -255,20 +255,24 @@ const App = {
     const box = $('#weightOpts');
     const cards = rules.meta.cards;
     if (!cards) { box.innerHTML = ''; return; }
-    const w = (id) => (go.weights?.[id] ?? 10);
-    const sum = cards.reduce((a, c) => a + Math.max(0, w(c.id)), 0) || 1;
+    // cardsMode: 'weight'（出現率・既定10）/ 'count'（山札の枚数・既定はカードごと）
+    const countMode = rules.meta.cardsMode === 'count';
+    const field = countMode ? 'counts' : 'weights';
+    const w = (c) => (go[field]?.[c.id] ?? (countMode ? c.count : 10));
+    const sum = cards.reduce((a, c) => a + Math.max(0, w(c)), 0) || 1;
     const open = box.querySelector('details')?.open;
-    box.innerHTML = `<details ${open ? 'open' : ''}><summary>高度な設定：カードの出現率</summary>
+    box.innerHTML = `<details ${open ? 'open' : ''}><summary>高度な設定：${countMode ? 'カードの枚数' : 'カードの出現率'}</summary>
       <div class="w-grid">${cards.map((c) => `<label class="w-row"><span class="w-l">${esc(c.label)}</span>
-        <input type="number" min="0" max="99" value="${w(c.id)}" data-w="${c.id}" ${host ? '' : 'disabled'}>
-        <span class="w-p">${(Math.max(0, w(c.id)) / sum * 100).toFixed(1)}%</span></label>`).join('')}</div>
-      ${host ? '<button class="btn ghost sm" id="wReset">デフォルトに戻す（全部10）</button>' : ''}</details>`;
+        <input type="number" min="0" max="${countMode ? 30 : 99}" value="${w(c)}" data-w="${c.id}" ${host ? '' : 'disabled'}>
+        <span class="w-p">${countMode ? '枚' : (Math.max(0, w(c)) / sum * 100).toFixed(1) + '%'}</span></label>`).join('')}</div>
+      ${countMode ? `<div class="w-sum">合計 ${sum}枚${rules.meta.cardsNote ? `　<small>${esc(rules.meta.cardsNote)}</small>` : ''}</div>` : ''}
+      ${host ? `<button class="btn ghost sm" id="wReset">デフォルトに戻す${countMode ? '' : '（全部10）'}</button>` : ''}</details>`;
     box.querySelectorAll('input[data-w]').forEach((inp) => (inp.onchange = () => {
-      const v = Math.max(0, Math.min(99, Math.round(+inp.value || 0)));
-      this.room.updateSettings({ [`gameOpts/${gameId}/weights/${inp.dataset.w}`]: v });
+      const v = Math.max(0, Math.min(+inp.max, Math.round(+inp.value || 0)));
+      this.room.updateSettings({ [`gameOpts/${gameId}/${field}/${inp.dataset.w}`]: v });
     }));
     const r = box.querySelector('#wReset');
-    if (r) r.onclick = () => this.room.updateSettings({ [`gameOpts/${gameId}/weights`]: null });
+    if (r) r.onclick = () => this.room.updateSettings({ [`gameOpts/${gameId}/${field}`]: null });
   },
 
   async startGame() {
@@ -473,6 +477,7 @@ const App = {
       await sc.raiseGun(ev.uid, isMe);
       return;
     }
+    this.view?.onPenalty?.(); // 結果表示などを片付ける
     if (this._alarmPre) this._alarmPre = false; // 既に鳴らしている
     else { sc.setAlarm(true); sfx.siren(3.2); }
     setTimeout(() => { if (this.scene === sc && this.match?.phase === 'loser') sc.setAlarm(0.45); }, 3300);
@@ -716,6 +721,11 @@ function optRow(o, val, enabled, prefix) {
     return `<label class="opt"><span class="ol">${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span>
       <button class="toggle ${val ? 'on' : ''}" data-${prefix}="${o.key}" data-type="bool" ${dis}>${val ? 'ON' : 'OFF'}</button></label>`;
   }
+  if (o.type === 'select') {
+    const cur = val ?? o.default;
+    return `<label class="opt"><span class="ol">${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span>
+      <span class="sel">${o.choices.map((c) => `<button class="toggle ${cur === c.value ? 'on' : ''}" data-${prefix}="${o.key}" data-type="select" data-v="${c.value}" ${dis}>${esc(c.label)}</button>`).join('')}</span></label>`;
+  }
   return `<label class="opt"><span class="ol">${esc(o.label)}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span>
     <span class="num"><button class="mini" data-${prefix}="${o.key}" data-step="-1" ${dis}>−</button>
     <input type="number" min="${o.min}" max="${o.max}" value="${val ?? o.default}" data-${prefix}="${o.key}" data-type="number" ${dis}>
@@ -725,6 +735,7 @@ function bindOpts(root, prefix, save) {
   root.querySelectorAll(`[data-${prefix}]`).forEach((el) => {
     const key = el.dataset[prefix];
     if (el.dataset.type === 'bool') el.onclick = (e) => { e.preventDefault(); save(key, !el.classList.contains('on')); };
+    else if (el.dataset.type === 'select') el.onclick = (e) => { e.preventDefault(); save(key, el.dataset.v); };
     else if (el.dataset.step) el.onclick = (e) => {
       e.preventDefault();
       const inp = root.querySelector(`input[data-${prefix}="${key}"]`);

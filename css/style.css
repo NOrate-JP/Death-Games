@@ -390,7 +390,10 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
   transform-origin: 50% 140%; transform: rotate(var(--rot, 0deg)) translateY(var(--drop, 0px)); flex-shrink: 0; }
 .hand-card .hc-in { position: absolute; inset: 0; transform-origin: 50% 100%; transition: transform .14s ease-out, filter .14s; }
 .hand-card img { width: 100%; height: 100%; object-fit: cover; display: block; box-shadow: 0 6px 14px rgba(0,0,0,.85); border-radius: 4px; }
-.hand-card.locked .hc-in { filter: brightness(.5) saturate(.6); }
+/* マウスを合わせていない時は全部明るく。どれかに合わせた時だけ、他を少し暗く */
+.hand-card.locked .hc-in { filter: none; }
+.cc-hand:hover .hand-card:not(:hover) .hc-in, .hand-fan:hover .hand-card:not(:hover) .hc-in,
+.cc-hand:has(.peek) .hand-card:not(.peek) .hc-in, .hand-fan:has(.peek) .hand-card:not(.peek) .hc-in { filter: brightness(.72); }
 .hand-card.locked { cursor: help; }
 .hand-card.playable .hc-in::after { content: ''; position: absolute; inset: -3px; border: 2px solid rgba(255,190,90,.75); border-radius: 6px; pointer-events: none; }
 /* 拡大は中身だけ。カード本体の位置（マウス判定）は変えない */
@@ -466,7 +469,7 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .is-c { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; }
 .is-c.me span { color: #ffd27a; }
 .is-c img { width: 72px; height: 108px; box-shadow: 0 4px 10px rgba(0,0,0,.8); transition: .3s; }
-.is-c img.swap { transform: rotateY(180deg) scale(.9); }
+
 .is-c img.zero { filter: grayscale(1) brightness(.45); outline: 3px solid #ff4a3a; }
 .is-steps { display: flex; flex-direction: column; gap: 4px; align-items: center; min-height: 40px; }
 .is-step { font-size: 16px; animation: dealIn .25s ease-out; display: flex; align-items: center; gap: 6px; }
@@ -497,12 +500,13 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .rd-cancel.off, .rd-cancel:disabled { background: #1a1a1e; border-color: #333; color: #555; box-shadow: none; cursor: default; }
 .rd-act { position: absolute; right: 16px; bottom: 196px; }
 .rd-draw { font-size: 20px; padding: 14px 22px; background: #6a1a10; border-color: #e0604a; box-shadow: 0 0 16px rgba(255,90,60,.4); }
-.rd-peek { position: absolute; right: 16px; top: 54px; background: rgba(10,6,4,.9); border: 2px solid #8ac0ff; padding: 8px; }
+.rd-peek { position: absolute; left: 14px; top: 124px; background: rgba(10,6,4,.92); border: 2px solid #8ac0ff; padding: 10px; z-index: 4; }
 .rd-peek:empty { display: none; }
-.rd-ph { font-size: 12px; color: #8ac0ff; margin-bottom: 4px; }
+.rd-ph { font-size: 14px; color: #8ac0ff; margin-bottom: 6px; }
 .rd-pc { display: flex; gap: 6px; }
 .rd-pc div { display: flex; flex-direction: column; align-items: center; font-size: 11px; color: var(--dim); }
-.rd-pc img { width: 64px; height: 96px; }
+.rd-pc img { width: 104px; height: 156px; }
+.rd-pc div { font-size: 14px; }
 .rd-modal { position: absolute; inset: 0; display: none; place-items: center; align-content: center; gap: 12px; background: rgba(0,0,0,.6); z-index: 9; }
 .rd-modal.on { display: grid; }
 .rd-mh { font-size: 18px; color: var(--gold); background: rgba(0,0,0,.8); padding: 8px 16px; text-align: center; }
@@ -515,3 +519,15 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .rd-pos b { font-size: 30px; color: #ffd27a; }
 .rd-qb { display: flex; gap: 6px; justify-content: center; }
 .rd-qb button { background: #2a1a14; color: var(--text); border: 1px solid var(--line); padding: 6px 12px; cursor: pointer; }
+.sel { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.sel .toggle { min-width: 0; padding: 4px 8px; font-size: 12px; }
+.w-sum { font-size: 12px; color: var(--gold); margin: -4px 0 8px; } .w-sum small { color: var(--dim); }
+.is-ci { display: flex; gap: 4px; }
+.is-c img { transition: transform .22s ease-in-out, filter .3s; }
+.is-c.shared span { color: #9ad8ff; }
+.is-mc { display: flex; gap: 6px; }
+.is-row img + img { margin-left: -4px; }
+
+.rd-top .od { color: #ff6a5a; font-size: 14px; margin-left: 6px; } .rd-top .od b { color: #ff4a3a; font-size: 24px; }
+.rd-mc button.chosen { border-color: #8dffa8; } .rd-mc button.chosen span { color: #8dffa8; font-size: 14px; }
+.banner.blue .bt { color: #8ac0ff; }

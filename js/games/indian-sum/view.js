@@ -45,28 +45,66 @@ class IndianSumView {
     this.el = Object.fromEntries(['Bid', 'Deck', 'Turn', 'Seen', 'Mine', 'Ctrl', 'Board', 'Callout'].map((k) => [k.toLowerCase(), h.querySelector('#is' + k)]));
   }
 
-  // ---------- おでこのカード ----------
-  setFore(uid, card) {
-    const sc = this.ctx.scene, st = sc.seats.get(uid);
-    let mesh = this.fore.get(uid);
-    if (!card || !st || (st.isMe && !this.revealed)) { if (mesh) mesh.visible = false; return; }
-    if (!mesh) {
-      mesh = new THREE.Group();
-      const front = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.405), new THREE.MeshBasicMaterial({ color: 0xf0ece0 }));
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.405), new THREE.MeshBasicMaterial({ map: sc.texFor('__back', cardCanvas(KEY, 'back')), color: 0xb0a8a0 }));
-      back.rotation.y = Math.PI; back.position.z = -0.002;
-      mesh.add(front, back);
-      mesh.position.set(0, 0.37, 0.16); mesh.rotation.x = 0.06;
-      st.head.add(mesh); // 頭上に大きく掲げる（外向き・首の向きに合わせて動く）
-      const frame = new THREE.Mesh(new THREE.PlaneGeometry(0.29, 0.425), new THREE.MeshBasicMaterial({ color: 0x1a1210 })); frame.position.z = -0.001; mesh.add(frame);
-      this.fore.set(uid, mesh);
-    }
-    mesh.children[0].material.map = sc.texFor(`${KEY}:${card}`, cardCanvas(KEY, card));
-    mesh.children[0].material.needsUpdate = true;
-    mesh.visible = true;
-    mesh.userData.card = card;
+  // ---------- 頭上のカード（複数枚なら横に並べる） ----------
+  makeCardMesh(w = 0.27) {
+    const sc = this.ctx.scene;
+    const mesh = new THREE.Group();
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 1.5), new THREE.MeshBasicMaterial({ color: 0xf0ece0 }));
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 1.5), new THREE.MeshBasicMaterial({ map: sc.texFor('__back', cardCanvas(KEY, 'back')), color: 0xb0a8a0 }));
+    back.rotation.y = Math.PI; back.position.z = -0.002;
+    const frame = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.075, w * 1.575), new THREE.MeshBasicMaterial({ color: 0x1a1210 })); frame.position.z = -0.001;
+    mesh.add(front, back, frame);
+    return mesh;
   }
-  clearFore() { for (const [, mm] of this.fore) mm.visible = false; }
+  setFront(mesh, card) {
+    mesh.children[0].material.map = this.ctx.scene.texFor(`${KEY}:${card}`, cardCanvas(KEY, card));
+    mesh.children[0].material.needsUpdate = true;
+  }
+  setFore(uid, cards) {
+    const sc = this.ctx.scene, st = sc.seats.get(uid);
+    let grp = this.fore.get(uid);
+    const list = Array.isArray(cards) ? cards : (cards ? [cards] : []);
+    if (!list.length || !st || (st.isMe && !this.revealed)) { if (grp) grp.visible = false; return; }
+    if (!grp) {
+      grp = new THREE.Group();
+      grp.position.set(0, 0.37, 0.16); grp.rotation.x = 0.06;
+      st.head.add(grp); // 頭上に大きく掲げる（外向き・首の向きに合わせて動く）
+      this.fore.set(uid, grp);
+    }
+    while (grp.children.length < list.length) grp.add(this.makeCardMesh());
+    grp.children.forEach((c, i) => {
+      c.visible = i < list.length;
+      if (i < list.length) {
+        this.setFront(c, list[i]);
+        c.position.x = (list.length - 1 - i - (list.length - 1) / 2) * 0.3; // 本人から見て左→右（他の人から見ると逆）
+      }
+    });
+    grp.visible = true;
+  }
+  clearFore() { for (const [, mm] of this.fore) mm.visible = false; if (this.sharedG) this.sharedG.visible = false; }
+
+  // 2人の間に立てる共有カード（両面とも表）
+  setShared(list) {
+    const sc = this.ctx.scene;
+    if (!list || !list.length) { if (this.sharedG) this.sharedG.visible = false; return; }
+    if (!this.sharedG) {
+      const g = new THREE.Group();
+      const a = this.makeCardMesh(0.3), b = this.makeCardMesh(0.3);
+      b.rotation.y = Math.PI; a.position.z = 0.005; b.position.z = -0.005; // 裏同士が重ならないよう離す
+      g.add(a, b);
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.08), new THREE.MeshLambertMaterial({ color: 0x2a2420 }));
+      stand.position.y = -0.24; g.add(stand);
+      g.position.set(0, 0.78 + 0.26, 0);
+      sc.scene.add(g);
+      this.sharedG = g;
+    }
+    // 2人の席を結ぶ線に向ける
+    const al = (this.lastM?.seats || []).filter((u) => this.lastM.alive[u]);
+    if (al.length === 2) { const p = sc.seats.get(al[0])?.pos; if (p) this.sharedG.rotation.y = Math.atan2(p.x, p.z); }
+    this.sharedG.children[0].visible = this.sharedG.children[1].visible = true;
+    this.setFront(this.sharedG.children[0], list[0]); this.setFront(this.sharedG.children[1], list[0]);
+    this.sharedG.visible = true;
+  }
 
   // ---------- HUD ----------
   renderTop(m) {
@@ -81,16 +119,18 @@ class IndianSumView {
     const s = m?.sub, me = this.ctx.me;
     if (!s?.cards || !m.alive || this.hidden) { this.el.seen.innerHTML = ''; return; }
     const others = m.seats.filter((u) => m.alive[u] && s.cards[u] && u !== me);
+    const imgs = (list) => list.map((c) => `<img src="${cardURL(KEY, c)}">`).join('');
     if (!this.showList) { this.el.seen.innerHTML = '<button class="is-tog" id="isTog">カード一覧を表示</button>'; this.el.seen.querySelector('#isTog').onclick = () => { this.showList = true; this.renderSeen(this.lastM); }; return; }
     this.el.seen.innerHTML = '<button class="is-tog" id="isTog">一覧を隠す</button><div class="is-sh">見えているカード</div>' + others.map((u) =>
-      `<div class="is-row"><img src="${cardURL(KEY, s.cards[u])}"><span>${this.ctx.name(u)}</span></div>`).join('');
+      `<div class="is-row">${imgs(s.cards[u])}<span>${this.ctx.name(u)}</span></div>`).join('') + (s.shared?.length ? `<div class="is-row">${imgs(s.shared)}<span>共有カード</span></div>` : '');
     this.el.seen.querySelector('#isTog').onclick = () => { this.showList = false; this.renderSeen(this.lastM); };
   }
   renderMine(m) {
     const me = this.ctx.me, s = m?.sub;
     if (!me || !m?.alive?.[me] || !s?.cards?.[me] || this.hidden) { this.el.mine.innerHTML = ''; return; }
     const show = this.revealed;
-    this.el.mine.innerHTML = `<div class="is-sh">あなたのカード</div><img class="${show ? 'flip' : ''}" src="${cardURL(KEY, show ? s.cards[me] : 'back')}"><div class="is-q">${show ? L(s.cards[me]) : '？？？'}</div>`;
+    const mine = s.cards[me];
+    this.el.mine.innerHTML = `<div class="is-sh">あなたのカード${mine.length > 1 ? `（${mine.length}枚）` : ''}</div><div class="is-mc">${mine.map((c) => `<img class="${show ? 'flip' : ''}" src="${cardURL(KEY, show ? c : 'back')}">`).join('')}</div><div class="is-q">${show ? mine.map(L).join(' ・ ') : '？？？'}</div>`;
   }
   showTurn(m, uid) {
     for (const u of m.seats) this.ctx.scene.setSeatStatus(u, { active: u === uid });
@@ -142,6 +182,7 @@ class IndianSumView {
     const s = m.sub; if (!s?.cards) return;
     this.hidden = false;
     for (const u of m.seats) this.setFore(u, m.alive[u] ? s.cards[u] : null);
+    this.setShared(s.shared);
     for (const u of m.seats) this.ctx.scene.setHandCount(u, 0);
     this.renderTop(m); this.renderSeen(m); this.renderMine(m);
     this.showTurn(m, m.phase === 'round' ? s.turn?.uid : null);
@@ -162,6 +203,8 @@ class IndianSumView {
         await sc.dealCards(ev.players, 1, (u) => {
           if (u !== me) this.setFore(u, m.sub?.cards?.[u]);
         });
+        if (ev.shared?.length) { this.setShared(ev.shared); this.ctx.popText('2人だけの共有カードが置かれた', 'b'); await sc.wait(600); }
+        if (ev.k > 1) this.ctx.popText('残り2人 — 頭上のカードは2枚', 'b');
         this.hidden = false;
         this.renderSeen(m); this.renderMine(m);
         return;
@@ -189,9 +232,10 @@ class IndianSumView {
     // 自分のカードをめくる
     if (me && ev.cards[me]) { sfx.card(); this.renderMine({ ...m, sub: { ...m.sub, cards: ev.cards } }); }
     const order = m.seats.filter((u) => ev.cards[u]);
+    const cimg = (c) => `<img data-card="${c}" src="${cardURL(KEY, c)}">`;
     const bd = this.el.board;
     bd.innerHTML = `<div class="ldb-h">オープン！ 宣言「${ev.bid} 以上」（${name(ev.bidder)}）</div>
-      <div class="is-cards">${order.map((u) => `<div class="is-c ${u === me ? 'me' : ''}" data-u="${u}"><img data-card="${ev.cards[u]}" src="${cardURL(KEY, ev.cards[u])}"><span>${name(u)}</span></div>`).join('')}</div>
+      <div class="is-cards">${order.map((u) => `<div class="is-c ${u === me ? 'me' : ''}" data-u="${u}"><div class="is-ci">${[].concat(ev.cards[u]).map(cimg).join('')}</div><span>${name(u)}</span></div>`).join('')}${(ev.shared || []).length ? `<div class="is-c shared"><div class="is-ci">${ev.shared.map(cimg).join('')}</div><span>共有カード</span></div>` : ''}</div>
       <div class="is-steps" id="isSteps"></div>`;
     bd.classList.add('on');
     const steps = bd.querySelector('#isSteps');
@@ -201,7 +245,12 @@ class IndianSumView {
       if (st.kind === 'q') {
         const qEl = bd.querySelector('.is-c img[data-card="q"]');
         add(`<b>？</b> → 山札から引いたカードは <img src="${cardURL(KEY, st.card)}"> <b>${L(st.card)}</b>`, 'sp');
-        if (qEl) { qEl.classList.add('swap'); await sc.wait(400); qEl.src = cardURL(KEY, st.card); qEl.dataset.card = st.card; }
+        if (qEl) {
+          qEl.dataset.card = 'q-done';
+          qEl.style.transform = 'rotateY(90deg)'; await sc.wait(220);       // 横向きまで回して
+          qEl.src = cardURL(KEY, st.card); qEl.dataset.card = st.card;     // 絵を差し替え
+          qEl.style.transform = 'rotateY(0deg)'; await sc.wait(220);        // 正面に戻す（反転しない）
+        }
       } else if (st.kind === 'max0') {
         add(st.card ? `<b>MAX→0</b>：一番大きい <b>${st.from}</b> が 0 になる` : '<b>MAX→0</b>：対象のカードなし', 'sp');
         if (st.card) { const t = bd.querySelector(`.is-c img[data-card="${st.card}"]:not(.zero)`); if (t) t.classList.add('zero'); }
@@ -222,8 +271,12 @@ class IndianSumView {
     await sc.wait(2200); // この後、共通の「敗者決定（警報）」へ
   }
 
+  // 敗者決定（サイレン）で判定ボードを片付ける
+  onPenalty() { this.el.board.classList.remove('on'); }
+
   dispose() {
     this.ctx.scene.labelLift = null;
+    if (this.sharedG) this.ctx.scene.scene.remove(this.sharedG);
     for (const [, mm] of this.fore) mm.parent?.remove(mm);
     this.ctx.hud.innerHTML = '';
   }

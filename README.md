@@ -23,7 +23,7 @@ Firebase未設定でも「オフライン練習（CPU戦）」は遊べます。
 
 INDIAN SUM は `assets/cards/indian-sum/` に n0〜n5 / n10 / n15 / n20 / nm5 / nm10 / night / x2 / max0 / q / back（.png）。
 
-RUSSIAN DECK は `assets/cards/russian-deck/` に dead / revive / attack / give / cancel / shuffle / skip / search / ma〜me / back（.png）。
+RUSSIAN DECK は `assets/cards/russian-deck/` に dead / odead / revive / attack / sniper / give / cancel / shuffle / skip / reverse / bottom / search / change / ma〜me / mx / back（.png）。
 
 LUCK BUTTON は `assets/cards/luck-button/` に skip.png / reverse.png / discard.png / double.png / danger.png / taboo.png / onehit.png / analyze.png / xray.png / shuffle.png / back.png を置くと差し替わります。
 
@@ -147,6 +147,10 @@ export const firebaseConfig = {
 - 使ったカードは捨て札。山札切れで捨て札をシャッフル。夜カードが出たら次ラウンド開始時に全36枚で山札を作り直す
 - 次ラウンドは敗者から（死亡していれば次の席）。ライフは共通のペナルティ設定を使用
 - チャレンジの宣言名は「ダウト！」
+- オプション「2人で共有カード追加」：残り2人の時、2人とも見える共有カードを1枚、テーブル中央に立てる（合計・効果に含む）
+- オプション「2人で手札2枚」：残り2人の時、頭上に2枚横並び（両方ONで計5枚）
+- ×2 と MAX→0 は複数枚あっても1枚分の効果。高度な設定で各カードの枚数を変更可（合計8枚未満なら標準構成）
+- 判定ボードはペナルティ（サイレン）開始で消える
 
 ## 首の向きの同期（全ゲーム共通）
 
@@ -157,10 +161,15 @@ export const firebaseConfig = {
 
 ## RUSSIAN DECK 仕様メモ
 
-- 毎ラウンド準備からやり直し。DEADは「生存者数÷2（切り上げ）」枚、REVIVEは全員に1枚＋余り（2〜3人は2枚、4人2枚、5人1枚、6人0枚）を山札へ
+- 毎ラウンド準備からやり直し。DEADはオプション（人数／人数÷2切り上げ／固定。既定は人数）、REVIVEは全員に1枚＋余り（2〜3人は2枚、4人2枚、5人1枚、6人0枚）を山札へ
 - DEADを引いてREVIVEがあれば自動使用。戻す位置は本人だけが選び、他の人には見えない
 - CANCELはカードがプレイされるたびに全員へ3秒の受付バー（カード公開の演出ぶん開始を約1.2秒遅らせる）。CANCELされるとまた3秒。持っていない人は毎回待つ（情報が漏れない）
 - 自分のプレイにはCANCEL不可。自分のプレイへのCANCELにはCANCEL返し可（最後に出したのが自分でなければ使える）
 - ATTACKを受けている時のATTACKは「残りターン＋2」を次の人へ
 - GIVEは指名された人が渡すカードを選ぶ（CPU・切断者はREVIVEを優先的に残す）
 - 1枚のMATCHは効果なし（CANCEL受付もなし）
+- OPEN DEAD（オプション：ON＝1枚追加／DEADと交換（既定）／OFF）：初回に引いた人はセーフで、好きな位置に戻す。以後位置は常に全員に公開（SHUFFLE後も追従）。公開中のものを引いたら即敗者（REVIVE・CANCEL不可）。CHANGE 3 で触れると裏向き（非公開）に戻る
+- REVERSE：ターン順を逆にしてターン終了（ATTACK中なら1ターン分）／BOTTOM：一番下から引いてターン終了
+- SNIPER 2：指名した相手に連続2ターン（ATTACKと同じく蓄積）／MATCH X：どのMATCHとも組める（X2枚も可）
+- CHANGE 3：上3枚を好きな順番に並べ替え（本人のみ）
+- 高度な設定で各カードの枚数を変更可（DEAD・OPEN DEAD・REVIVEを除く）

@@ -1,6 +1,6 @@
 // RUSSIAN DECK : 表示（山札・捨て札・手札・CANCELバー・各種選択）
 import * as THREE from 'three';
-import { CARD_DEFS, isMatch, canCancel, deadsInDeck, WINDOW_MS } from './rules.js';
+import { CARD_DEFS, isMatch, isPair, canCancel, deadsInDeck, openDeadPos, WINDOW_MS } from './rules.js';
 import { preloadCards, cardCanvas, cardURL } from '../../card-art.js';
 import { TABLE_Y } from '../../scene/scene.js';
 import { sfx } from '../../audio.js';
@@ -8,9 +8,9 @@ import { makeHandCard, layoutFan } from '../../hand-ui.js';
 
 const KEY = 'russian-deck';
 const ART = Object.fromEntries(Object.entries(CARD_DEFS).map(([k, d]) => [k, { ...d, type: 'sp' }]));
-const ORDER = ['revive', 'cancel', 'skip', 'attack', 'shuffle', 'search', 'give', 'ma', 'mb', 'mc', 'md', 'me', 'dead'];
+const ORDER = ['revive', 'cancel', 'skip', 'reverse', 'attack', 'sniper', 'bottom', 'shuffle', 'search', 'change', 'give', 'ma', 'mb', 'mc', 'md', 'me', 'mx', 'dead', 'odead'];
 const L = (c) => CARD_DEFS[c]?.label ?? c;
-const UNPLAYABLE = new Set(['dead', 'revive', 'cancel']);
+const UNPLAYABLE = new Set(['dead', 'odead', 'revive', 'cancel']);
 
 export async function createView(ctx) {
   const v = new RussianDeckView(ctx);
@@ -40,6 +40,9 @@ class RussianDeckView {
     g.add(this.deckBody, this.deckTop);
     sc.props.add(g);
     this.deckG = g;
+    // 公開中のOPEN DEADの位置を示す赤い札（山札からはみ出させる）
+    this.odMark = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.006, 0.34), new THREE.MeshBasicMaterial({ color: 0xff2010 }));
+    this.odMark.visible = false; g.add(this.odMark);
     this.discard = sc.makeCard(`${KEY}:back`, cardCanvas(KEY, 'back'), 0.2);
     this.discard.rotation.set(-Math.PI / 2, 0, 0.15); this.discard.position.set(0.2, TABLE_Y + 0.004, 0.02); this.discard.visible = false;
     sc.scene.add(this.discard);
@@ -48,11 +51,14 @@ class RussianDeckView {
     this._tick = setInterval(() => this.tickBar(), 50);
   }
 
-  setDeck(n) {
+  setDeck(n, odPos = -1) {
     const h = Math.max(0.004, n * 0.0045);
     this.deckBody.scale.y = h; this.deckBody.position.y = h / 2;
     this.deckTop.position.y = h + 0.001;
     this.deckG.visible = n > 0;
+    this.odMark.visible = odPos >= 0;
+    if (odPos >= 0) { this.odMark.position.set(0.03, Math.max(0.003, h - odPos * 0.0045 - 0.002), 0); }
+    this.deckTop.material.color.setHex(odPos === 0 ? 0xff5040 : 0xffffff);
   }
   setDiscard(card) {
     if (!card) { this.discard.visible = false; return; }
@@ -85,8 +91,10 @@ class RussianDeckView {
 
   renderTop(m) {
     const s = m.sub; if (!s?.deck) return;
-    this.el.top.innerHTML = `<span class="k">山札</span><b>${s.deck.length}</b><span class="k">うちDEAD</span><b class="d">${deadsInDeck(s)}</b><span class="k">捨て札</span><b>${s.discard.length}</b>`;
-    this.setDeck(s.deck.length);
+    const odp = openDeadPos(s);
+    this.el.top.innerHTML = `<span class="k">山札</span><b>${s.deck.length}</b><span class="k">うちDEAD</span><b class="d">${deadsInDeck(s) + (s.deck.includes('odead') && !s.odOpen ? 1 : 0)}</b><span class="k">捨て札</span><b>${s.discard.length}</b>`
+      + (odp >= 0 ? `<span class="od">OPEN DEAD：上から <b>${odp + 1}</b> 枚目${odp === 0 ? '（一番上！）' : ''}</span>` : '');
+    this.setDeck(s.deck.length, odp);
     this.setDiscard(s.discard[s.discard.length - 1]);
   }
 
@@ -102,7 +110,8 @@ class RussianDeckView {
     if (t.left > 1) b.push(`<span class="bdg r">ATTACK：あと${t.left}ターン</span>`);
     const al = m.seats.filter((u) => m.alive[u]);
     const i = al.indexOf(uid);
-    if (i >= 0 && al.length > 1) b.push(`<span class="bdg dim">次 → ${this.ctx.name(al[(i + 1) % al.length])}</span>`);
+    const dir = s.dir || 1;
+    if (i >= 0 && al.length > 1) b.push(`<span class="bdg dim">${dir < 0 ? '⟲ 逆回り　' : ''}次 → ${this.ctx.name(al[(i + dir + al.length) % al.length])}</span>`);
     this.el.badges.innerHTML = b.join('');
   }
 
@@ -175,19 +184,23 @@ class RussianDeckView {
     const others = m.seats.filter((u) => m.alive[u] && u !== me);
     const label = (u) => `${this.ctx.name(u)}（手札${(m.sub.hands[u] || []).length}枚）`;
     if (isMatch(card)) {
-      const j = h.findIndex((c, k) => c === card && k !== idx);
-      const opts = [];
-      if (j >= 0) opts.push({ value: 'pair', label: `${L(card)} を2枚使う（相手から1枚奪う）` });
+      // 組める相手（同じ文字、またはMATCH X）
+      const partners = [];
+      h.forEach((c, k) => { if (k !== idx && isPair(card, c) && !partners.some((p) => h[p] === c)) partners.push(k); });
+      const opts = partners.map((k) => ({ value: 'p' + k, label: `${L(card)} ＋ ${L(h[k])} で使う（相手から1枚奪う）` }));
       opts.push({ value: 'single', label: `1枚だけ捨てる（効果なし）` });
       const c = await this.ctx.choose(`${L(card)}`, opts);
       if (!c) return;
-      if (c === 'pair') {
-        idxs = [idx, j];
+      if (c !== 'single') {
+        idxs = [idx, +c.slice(1)];
         target = await this.ctx.choose('誰から奪う？', others.map((u) => ({ value: u, label: label(u) })));
         if (!target) return;
       }
     } else if (card === 'give') {
       target = await this.ctx.choose('GIVE — カードを渡させる相手', others.map((u) => ({ value: u, label: label(u) })));
+      if (!target) return;
+    } else if (card === 'sniper') {
+      target = await this.ctx.choose('SNIPER — 2ターン連続で行わせる相手', others.map((u) => ({ value: u, label: label(u) })));
       if (!target) return;
     }
     if (!this.inputOn) return;
@@ -222,11 +235,30 @@ class RussianDeckView {
       box.querySelectorAll('button[data-i]').forEach((b) => (b.onclick = () => { if (!this.inputOn) return; this.inputOn = false; box.className = 'rd-modal'; this._modalKey = null; this.ctx.send({ type: 'give', idx: +b.dataset.i }); }));
       return;
     }
-    if (this.inputOn && s?.phase === 'revive' && s.revive.uid === me) {
+    if (this.inputOn && s?.phase === 'change' && s.change.uid === me) {
+      if (this._modalKey === key) return; this._modalKey = key;
+      const cards = s.change.cards;
+      let order = [];
+      box.className = 'rd-modal on';
+      const draw = () => {
+        box.innerHTML = `<div class="rd-mh">CHANGE 3 — 山札の上に戻す順番で、カードをクリック（1番目が一番上）</div>
+          <div class="rd-mc">${cards.map((c, i) => `<button data-i="${i}" class="${order.includes(i) ? 'chosen' : ''}"><img src="${cardURL(KEY, c)}"><span>${order.includes(i) ? `${order.indexOf(i) + 1}番目` : L(c)}</span></button>`).join('')}</div>
+          <div class="rd-qb"><button id="rdChReset">選び直す</button><button id="rdChKeep">今の順番のまま</button></div>
+          <button class="btn" id="rdChOk" ${order.length === cards.length ? '' : 'disabled'}>この順番で戻す</button>`;
+        box.querySelectorAll('button[data-i]').forEach((b) => (b.onclick = () => { const i = +b.dataset.i; if (!order.includes(i)) order.push(i); draw(); }));
+        box.querySelector('#rdChReset').onclick = () => { order = []; draw(); };
+        box.querySelector('#rdChKeep').onclick = () => { order = cards.map((_, i) => i); draw(); };
+        box.querySelector('#rdChOk').onclick = () => { if (!this.inputOn || order.length !== cards.length) return; this.inputOn = false; box.className = 'rd-modal'; this._modalKey = null; this.ctx.send({ type: 'reorder', order }); };
+      };
+      draw();
+      return;
+    }
+    const placing = s?.phase === 'revive' ? 'revive' : s?.phase === 'oplace' ? 'oplace' : null;
+    if (this.inputOn && placing && s[placing].uid === me) {
       if (this._modalKey === key) return; this._modalKey = key;
       const n = s.deck.length;
       box.className = 'rd-modal on';
-      box.innerHTML = `<div class="rd-mh">REVIVE！ DEAD を山札のどこに戻す？（他の人には見えません）</div>
+      box.innerHTML = `<div class="rd-mh">${placing === 'revive' ? 'REVIVE！ DEAD を山札のどこに戻す？（他の人には見えません）' : 'OPEN DEAD を山札のどこに戻す？（位置は全員に公開されます）'}</div>
         <div class="rd-pos"><input type="range" min="1" max="${n + 1}" value="1" id="rdPos"><div>上から <b id="rdPosV">1</b> 枚目（全${n + 1}か所）</div></div>
         <div class="rd-qb"><button data-q="1">一番上</button><button data-q="2">2枚目</button><button data-q="mid">真ん中</button><button data-q="end">一番下</button><button data-q="rand">ランダム</button></div>
         <button class="btn" id="rdPlace">ここに戻す</button>`;
@@ -237,7 +269,7 @@ class RussianDeckView {
         inp.value = q === 'mid' ? Math.ceil((n + 1) / 2) : q === 'end' ? n + 1 : q === 'rand' ? 1 + Math.floor(Math.random() * (n + 1)) : q;
         v.textContent = inp.value;
       }));
-      box.querySelector('#rdPlace').onclick = () => { if (!this.inputOn) return; this.inputOn = false; box.className = 'rd-modal'; this._modalKey = null; this.ctx.send({ type: 'place', pos: +inp.value - 1 }); };
+      box.querySelector('#rdPlace').onclick = () => { if (!this.inputOn) return; this.inputOn = false; box.className = 'rd-modal'; this._modalKey = null; this.ctx.send({ type: placing === 'revive' ? 'place' : 'oplace', pos: +inp.value - 1 }); };
       return;
     }
     this._modalKey = null;
@@ -294,13 +326,25 @@ class RussianDeckView {
         sc.setHandCount(ev.uid, ev.left);
         sfx.bust();
         this.setDiscard('cancel');
-        await this.ctx.reveal({ img: cardURL(KEY, 'cancel'), text: `${name(ev.uid)} が CANCEL！`, ms: 800 });
-        this.ctx.popText(ev.effective ? 'CANCEL返し！ 効果が復活' : 'CANCEL！ 無効化', ev.effective ? 'g' : 'r');
+        sfx.special();
+        this.ctx.banner(`${name(ev.uid)} の CANCEL！`, ev.effective ? 'CANCEL返し — 効果が復活' : '効果を無効化', 1300, 'blue');
+        await sc.wait(1300);
         return;
       }
       case 'rd_resolve': if (!ev.effective) { this.ctx.popText('無効化された', 'b'); await sc.wait(500); } return;
-      case 'rd_attack': this.ctx.popText(`ATTACK！ ${name(ev.to)} は ${ev.turns}ターン連続`, 'r'); await sc.wait(800); return;
+      case 'rd_attack': this.ctx.popText(`${ev.sniper ? 'SNIPER' : 'ATTACK'}！ ${name(ev.to)} は ${ev.turns}ターン連続`, 'r'); await sc.wait(800); return;
       case 'rd_skip': this.ctx.popText(`${name(ev.uid)} はスキップ`, 'b'); await sc.wait(500); return;
+      case 'rd_reverse': this.ctx.popText(`REVERSE！ ターン順が${ev.dir < 0 ? '逆回り' : '正回り'}に`, 'b'); await sc.wait(600); return;
+      case 'rd_change': if (ev.uid !== me) this.ctx.popText(`${name(ev.uid)} が山札の上3枚を並べ替えている…`); await sc.wait(300); return;
+      case 'rd_changed': this.renderTop(m); this.ctx.popText(ev.hidOpen ? 'OPEN DEAD が裏向きに戻された！' : `${name(ev.uid)} が並べ替えを終えた`, ev.hidOpen ? 'r' : ''); await sc.wait(500); return;
+      case 'rd_odead': {
+        if (ev.open) this.ctx.alarmNow();
+        else sfx.bust();
+        await this.ctx.reveal({ img: cardURL(KEY, 'odead'), text: ev.open ? `${name(ev.uid)} が公開中の OPEN DEAD を引いた！` : `${name(ev.uid)} が OPEN DEAD を引いた — 初回なのでセーフ`, ms: 1800 });
+        if (!ev.open && ev.uid !== me) this.ctx.popText(`${name(ev.uid)} が OPEN DEAD を戻す位置を選んでいる…`);
+        return;
+      }
+      case 'rd_oplaced': this.renderTop(m); sfx.deal(); this.ctx.popText(`OPEN DEAD は上から ${ev.pos + 1}枚目（公開）`, 'r'); await sc.wait(800); return;
       case 'rd_shuffle': {
         this.ctx.popText('山札をシャッフル', 'b'); sfx.rattle?.(10);
         const p0 = this.deckG.position.clone();
@@ -324,7 +368,8 @@ class RussianDeckView {
         return;
       }
       case 'rd_draw': {
-        this.setDeck(ev.deck);
+        this.setDeck(ev.deck, openDeadPos(m.sub || {}));
+        if (ev.bottom) this.ctx.popText(`${name(ev.uid)} は一番下から引いた`);
         sfx.deal();
         await sc.dealCards([ev.uid], 1, () => sc.setHandCount(ev.uid, ev.left));
         return;

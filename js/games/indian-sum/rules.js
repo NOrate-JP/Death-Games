@@ -23,6 +23,15 @@ export const CARD_DEFS = {
   q: { type: 'sp', value: 0, label: '?', count: 1, desc: '判定時に山札から1枚引き、そのカードとして扱う。' },
 };
 export const FULL_DECK = Object.entries(CARD_DEFS).flatMap(([id, d]) => Array(d.count).fill(id));
+// 高度な設定の枚数を反映した山札（全部0などの異常値なら標準構成）
+export function buildDeck(opts) {
+  const c = opts?.counts || {};
+  const deck = Object.entries(CARD_DEFS).flatMap(([id, d]) => Array(Math.max(0, Math.min(30, c[id] ?? d.count))).fill(id));
+  return deck.length >= 8 ? deck : FULL_DECK.slice();
+}
+// 残り2人の時の特別ルール
+export const handSize = (m) => (aliveList(m).length === 2 && m.opts?.two ? 2 : 1);
+export const useShared = (m) => aliveList(m).length === 2 && !!m.opts?.shared;
 
 export const meta = {
   id: 'indian-sum',
@@ -30,7 +39,13 @@ export const meta = {
   subtitle: '自分の数字だけが見えない',
   minPlayers: 2,
   maxPlayers: 6,
-  options: [],
+  options: [
+    { key: 'shared', label: '2人で共有カード追加', type: 'bool', default: false, note: '残り2人の時、2人とも見える共通カードを1枚追加' },
+    { key: 'two', label: '2人で手札2枚', type: 'bool', default: false, note: '残り2人の時、2人とも頭上のカードが2枚に' },
+  ],
+  cardsMode: 'count',
+  cards: Object.entries(CARD_DEFS).map(([id, d]) => ({ id, label: d.label, count: d.count })),
+  cardsNote: 'MAX→0・×2は何枚出ても効果は1回分。？は1枚ごとに山札から引く',
   rulesHtml: `
     <p>全員がカードを1枚、おでこに掲げます。<b>自分のカードだけ見えず、他の人のカードは全部見えます。</b></p>
     <p>スタートプレイヤーから順に、「場の全カードの合計は○以上ある」と数字を宣言していきます。
@@ -52,7 +67,7 @@ export const meta = {
 function drawFrom(m) {
   const g = m.gs;
   if (!g.deck.length) { g.deck = shuffle(g.discard); g.discard = []; pushEvent(m, { t: 'in_reshuffle', why: 'empty' }); }
-  return g.deck.pop();
+  return g.deck.length ? g.deck.pop() : 'n0'; // 極端な枚数設定で尽きた場合の保険
 }
 function nextAlive(m, uid) {
   const n = m.seats.length; let i = m.seats.indexOf(uid);
@@ -61,17 +76,19 @@ function nextAlive(m, uid) {
 }
 
 export function startRound(m) {
-  if (!m.gs) m.gs = { deck: shuffle(FULL_DECK.slice()), discard: [], night: false };
+  if (!m.gs) m.gs = { deck: shuffle(buildDeck(m.opts)), discard: [], night: false };
   let reset = false;
-  if (m.gs.night) { m.gs.deck = shuffle(FULL_DECK.slice()); m.gs.discard = []; m.gs.night = false; reset = true; }
+  if (m.gs.night) { m.gs.deck = shuffle(buildDeck(m.opts)); m.gs.discard = []; m.gs.night = false; reset = true; }
   const al = aliveList(m);
+  const k = handSize(m);
   const cards = {};
-  for (const u of al) cards[u] = drawFrom(m);
+  for (const u of al) cards[u] = Array.from({ length: k }, () => drawFrom(m));
+  const shared = useShared(m) ? [drawFrom(m)] : [];
   let start;
   if (m.prevLoser && m.seats.includes(m.prevLoser)) start = m.alive[m.prevLoser] ? m.prevLoser : nextAlive(m, m.prevLoser);
   else start = pick(al);
-  m.sub = { cards, bid: null, turn: { uid: start }, history: [] };
-  pushEvent(m, { t: 'in_setup', players: al, start, reset, deckLeft: m.gs.deck.length });
+  m.sub = { cards, shared, bid: null, turn: { uid: start }, history: [] };
+  pushEvent(m, { t: 'in_setup', players: al, start, reset, deckLeft: m.gs.deck.length, k, shared });
   pushEvent(m, { t: 'in_turn', uid: start });
 }
 
@@ -102,12 +119,19 @@ export function applyAction(m, uid, a) {
 }
 
 // 合計の計算（？→ MAX→0 → 合計 → ×2 の順）
-export function computeTotal(cardList, qDraw) {
+export function computeTotal(cardList, qDraws) {
   const steps = [];
   let list = cardList.slice();
+  const draws = Array.isArray(qDraws) ? qDraws : (qDraws ? [qDraws] : []);
   if (list.includes('q')) {
+    const nq = list.filter((c) => c === 'q').length;
     list = list.filter((c) => c !== 'q');
-    if (qDraw) { list.push(qDraw); steps.push({ kind: 'q', card: qDraw }); }
+    for (let i = 0; i < nq; i++) {
+      const d = draws[i];
+      if (!d) continue;
+      steps.push({ kind: 'q', card: d });
+      if (d !== 'q') list.push(d); // ？から？を引いたら0扱い
+    }
   }
   const vals = list.map((c) => ({ c, v: CARD_DEFS[c].type === 'num' ? CARD_DEFS[c].value : 0 }));
   if (list.includes('max0')) {
@@ -126,16 +150,15 @@ function resolve(m, caller) {
   const s = m.sub, g = m.gs, b = s.bid;
   pushEvent(m, { t: 'in_call', uid: caller, target: b.uid, value: b.value });
   const al = aliveList(m);
-  const list = al.map((u) => s.cards[u]);
-  let qDraw = null;
-  if (list.includes('q')) qDraw = drawFrom(m);
-  const { sum, steps, night } = computeTotal(list, qDraw);
+  const list = [...al.flatMap((u) => s.cards[u]), ...(s.shared || [])];
+  const qDraws = list.filter((c) => c === 'q').map(() => drawFrom(m));
+  const { sum, steps, night } = computeTotal(list, qDraws);
   const over = b.value > sum; // 宣言が合計を超えていたら宣言者の負け
   const loser = over ? b.uid : caller;
   // 使ったカードは捨て札へ
-  g.discard.push(...list, ...(qDraw ? [qDraw] : []));
+  g.discard.push(...list, ...qDraws);
   if (night) g.night = true;
-  pushEvent(m, { t: 'in_reveal', cards: { ...s.cards }, qDraw, steps, sum, bid: b.value, bidder: b.uid, caller, loser, night });
+  pushEvent(m, { t: 'in_reveal', cards: { ...s.cards }, shared: s.shared || [], qDraws, steps, sum, bid: b.value, bidder: b.uid, caller, loser, night });
   m.loser = { uid: loser, reason: over ? 'over' : 'wrongcall',
     text: over ? `宣言 ${b.value} は合計 ${sum} を超えていた` : `合計は ${sum}。宣言 ${b.value} は超えていなかった` };
 }
@@ -144,17 +167,19 @@ function resolve(m, caller) {
 export function cpuAction(m, uid) {
   const s = m.sub, g = m.gs;
   const al = aliveList(m);
-  const visible = al.filter((u) => u !== uid).map((u) => s.cards[u]);
-  // 自分のカード候補 = 全36枚 − 見えているカード − 捨て札
-  const pool = FULL_DECK.slice();
+  const visible = [...al.filter((u) => u !== uid).flatMap((u) => s.cards[u]), ...(s.shared || [])];
+  const mineN = (s.cards[uid] || []).length;
+  // 自分のカード候補 = 山札全体 − 見えているカード − 捨て札
+  const pool = buildDeck(m.opts);
   const remove = (c) => { const i = pool.indexOf(c); if (i >= 0) pool.splice(i, 1); };
   visible.forEach(remove); (g.discard || []).forEach(remove);
   const sums = [];
   for (let k = 0; k < 300; k++) {
     const p = pool.slice();
-    const mine = p.splice(Math.floor(Math.random() * p.length), 1)[0];
-    const list = [...visible, mine];
-    const qd = list.includes('q') ? p[Math.floor(Math.random() * p.length)] : null;
+    const mine = [];
+    for (let i = 0; i < mineN && p.length; i++) mine.push(p.splice(Math.floor(Math.random() * p.length), 1)[0]);
+    const list = [...visible, ...mine];
+    const qd = list.filter((c) => c === 'q').map(() => (p.length ? p.splice(Math.floor(Math.random() * p.length), 1)[0] : 'n0'));
     sums.push(computeTotal(list, qd).sum);
   }
   sums.sort((a, b) => a - b);
@@ -176,7 +201,7 @@ export function describeEvent(ev, name) {
     case 'in_setup': return `${ev.reset ? '山札リセット ／ ' : ''}山札残り ${ev.deckLeft}枚 ／ スタート: ${name(ev.start)}`;
     case 'in_bid': return `${name(ev.uid)}「${ev.value}」`;
     case 'in_call': return `${name(ev.uid)} ▶ ダウト！（${name(ev.target)} の ${ev.value}）`;
-    case 'in_reveal': return `合計 ${ev.sum}${ev.qDraw ? `（?＝${L(ev.qDraw)}）` : ''} → ${name(ev.loser)} の負け${ev.night ? '　※夜：山札リセット' : ''}`;
+    case 'in_reveal': return `合計 ${ev.sum}${ev.qDraws?.length ? `（?＝${ev.qDraws.map(L).join('・')}）` : ''} → ${name(ev.loser)} の負け${ev.night ? '　※夜：山札リセット' : ''}`;
     case 'in_reshuffle': return '山札切れ：捨て札をシャッフル';
     default: return null;
   }
