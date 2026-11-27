@@ -5,6 +5,12 @@
         ".read": "auth != null",
         ".write": "auth != null"
       }
+    },
+    "looks": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }

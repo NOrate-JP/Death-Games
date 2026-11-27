@@ -27,6 +27,8 @@ class IndianSumView {
   async init() {
     await preloadCards(KEY, CARD_DEFS);
     this.ctx.scene.setBackCanvas(cardCanvas(KEY, 'back'));
+    this.ctx.scene.labelLift = 0.7; // 名前表示を頭上のカードより上に
+    this.showList = false;
     this.buildHud();
   }
 
@@ -50,12 +52,13 @@ class IndianSumView {
     if (!card || !st || (st.isMe && !this.revealed)) { if (mesh) mesh.visible = false; return; }
     if (!mesh) {
       mesh = new THREE.Group();
-      const front = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.225), new THREE.MeshBasicMaterial({ color: 0xe0dccc }));
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.225), new THREE.MeshBasicMaterial({ map: sc.texFor('__back', cardCanvas(KEY, 'back')), color: 0xb0a8a0 }));
+      const front = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.405), new THREE.MeshBasicMaterial({ color: 0xf0ece0 }));
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.405), new THREE.MeshBasicMaterial({ map: sc.texFor('__back', cardCanvas(KEY, 'back')), color: 0xb0a8a0 }));
       back.rotation.y = Math.PI; back.position.z = -0.002;
       mesh.add(front, back);
-      mesh.position.set(0, 0.2, 0.2); mesh.rotation.x = -0.12;
-      st.head.add(mesh); // 顔の前、おでこの高さに掲げる（外向き）
+      mesh.position.set(0, 0.37, 0.16); mesh.rotation.x = 0.06;
+      st.head.add(mesh); // 頭上に大きく掲げる（外向き・首の向きに合わせて動く）
+      const frame = new THREE.Mesh(new THREE.PlaneGeometry(0.29, 0.425), new THREE.MeshBasicMaterial({ color: 0x1a1210 })); frame.position.z = -0.001; mesh.add(frame);
       this.fore.set(uid, mesh);
     }
     mesh.children[0].material.map = sc.texFor(`${KEY}:${card}`, cardCanvas(KEY, card));
@@ -78,8 +81,10 @@ class IndianSumView {
     const s = m?.sub, me = this.ctx.me;
     if (!s?.cards || !m.alive || this.hidden) { this.el.seen.innerHTML = ''; return; }
     const others = m.seats.filter((u) => m.alive[u] && s.cards[u] && u !== me);
-    this.el.seen.innerHTML = '<div class="is-sh">見えているカード</div>' + others.map((u) =>
+    if (!this.showList) { this.el.seen.innerHTML = '<button class="is-tog" id="isTog">カード一覧を表示</button>'; this.el.seen.querySelector('#isTog').onclick = () => { this.showList = true; this.renderSeen(this.lastM); }; return; }
+    this.el.seen.innerHTML = '<button class="is-tog" id="isTog">一覧を隠す</button><div class="is-sh">見えているカード</div>' + others.map((u) =>
       `<div class="is-row"><img src="${cardURL(KEY, s.cards[u])}"><span>${this.ctx.name(u)}</span></div>`).join('');
+    this.el.seen.querySelector('#isTog').onclick = () => { this.showList = false; this.renderSeen(this.lastM); };
   }
   renderMine(m) {
     const me = this.ctx.me, s = m?.sub;
@@ -218,6 +223,7 @@ class IndianSumView {
   }
 
   dispose() {
+    this.ctx.scene.labelLift = null;
     for (const [, mm] of this.fore) mm.parent?.remove(mm);
     this.ctx.hud.innerHTML = '';
   }

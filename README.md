@@ -8,7 +8,7 @@ Firebase（匿名ログイン + Realtime Database）と GitHub Pages だけで�
 1. **Firebaseプロジェクトを作成**
    - Authentication → ログイン方法 → **匿名** を有効化
    - Realtime Database を作成（ロケーションはどこでも可）
-   - Realtime Database → ルール に `database.rules.json` の中身を貼り付けて公開
+   - Realtime Database → ルール に `database.rules.json` の中身を貼り付けて公開（首の向き同期用に `looks` も必要）
 2. **設定値を貼る**（※配布zipには `js/firebase-config.js` を含めていません。初回だけ下の内容で作成し、以降は上書きされません）
    - プロジェクトの設定 → マイアプリ → Webアプリを追加 → 表示される `firebaseConfig` を
      `js/firebase-config.js` に貼り付け（`databaseURL` を必ず含める）
@@ -144,3 +144,10 @@ export const firebaseConfig = {
 - 使ったカードは捨て札。山札切れで捨て札をシャッフル。夜カードが出たら次ラウンド開始時に全36枚で山札を作り直す
 - 次ラウンドは敗者から（死亡していれば次の席）。ライフは共通のペナルティ設定を使用
 - チャレンジの宣言名は「ダウト！」
+
+## 首の向きの同期（全ゲーム共通）
+
+- 自分のカメラの向きを `looks/部屋コード/uid` に送信（向きが変わった時だけ、最大 約7回/秒）。部屋データとは別の場所なのでゲームの同期には影響しない
+- 受け取った向きで相手の頭（65%）と上半身（35%）をなめらかに回す
+- CPUは各端末で、手番の人を見る／ときどき視線を外す動きをする
+- **Firebaseのルールに `looks` の項目を追加する必要あり**（database.rules.json 参照）

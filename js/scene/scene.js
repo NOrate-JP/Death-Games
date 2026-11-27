@@ -330,7 +330,7 @@ export class TableScene {
     const coatM = lam(v.coat);
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.72, 7), coatM); torso.position.y = 0.38; body.add(torso);
     const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.12, 0.26), coatM); shoulder.position.y = 0.7; body.add(shoulder);
-    const head = new THREE.Group(); head.position.set(0, 0.93, 0.02); body.add(head);
+    const head = new THREE.Group(); head.position.set(0, 0.93, 0.02); head.rotation.order = 'YXZ'; body.add(head);
     const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), lam(0x4a3a30)); head.add(skull);
     const maskM = lam(v.mask, { emissive: v.mask, emissiveIntensity: 0.1 });
     const mask = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.11, 0.05, 7), maskM);
@@ -377,7 +377,8 @@ export class TableScene {
     this.labelLayer.appendChild(label);
     if (isMe || empty) body.visible = false;
     if (empty) label.style.display = 'none';
-    return { uid: p.uid, name: p.name, group: g, body, head, maskM, fan, marker, label, isMe, empty, alive: true, pos, idx: i, handCount: -1, gun, restPos, restQ, raised: false };
+    return { uid: p.uid, name: p.name, group: g, body, head, maskM, fan, marker, label, isMe, empty, alive: true, pos, idx: i, handCount: -1, gun, restPos, restQ, raised: false,
+      look: { y: 0, p: 0 }, lookCur: { y: 0, p: 0 } };
   }
 
   setSeatStatus(uid, { status, extra, active, alive, game } = {}) {
@@ -406,6 +407,35 @@ export class TableScene {
   }
 
   setBackCanvas(c) { this._backCanvas = c; }
+
+  // ---------- 首の向き（他プレイヤーと同期） ----------
+  // yaw: 正面からの左右（+で本人の左）, pitch: 上下（−で下を見る）
+  setSeatLook(uid, yaw, pitch) {
+    const st = this.seats.get(uid); if (!st) return;
+    st.look.y = THREE.MathUtils.clamp(yaw, -1.25, 1.25);
+    st.look.p = THREE.MathUtils.clamp(pitch, -0.75, 0.45);
+  }
+  // 席から見たワールド方向 dir の yaw/pitch
+  dirToLook(uid, dir) {
+    const st = this.seats.get(uid); if (!st) return null;
+    const ax = V(1, 0, 0).applyQuaternion(st.group.quaternion), az = V(0, 0, 1).applyQuaternion(st.group.quaternion);
+    const d = dir.clone().normalize();
+    return { y: Math.atan2(d.dot(ax), d.dot(az)), p: Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)) };
+  }
+  // 自分のカメラが向いている方向を、自分の席の首の向きとして返す
+  myLook() {
+    if (!this.me || !this.seats.has(this.me)) return null;
+    if (!['seat', 'custom'].includes(this.mode.kind) || this.mode.uid !== this.me) return null;
+    const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+    return this.dirToLook(this.me, d);
+  }
+  // uid の頭から、ワールド座標 p を見る向き
+  lookToward(uid, p) {
+    const st = this.seats.get(uid); if (!st) return null;
+    const from = st.head.getWorldPosition(new THREE.Vector3());
+    return this.dirToLook(uid, p.clone().sub(from));
+  }
+  headPos(uid) { const st = this.seats.get(uid); return st ? st.head.getWorldPosition(new THREE.Vector3()) : V(0, TABLE_Y, 0); }
   // 席のローカル座標（+zがテーブル中央方向）→ワールド座標
   seatPoint(uid, x, y, z) { const st = this.seats.get(uid); return st ? st.group.localToWorld(V(x, y, z)) : V(0, y, 0); }
   seatYaw(uid) { const st = this.seats.get(uid); return st ? st.group.rotation.y : 0; }
@@ -710,7 +740,22 @@ export class TableScene {
     this.renderer.render(this.scene, this.camera);
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.postScene, this.postCam);
+    this._updateHeads(dt);
     this._updateLabels();
+  }
+
+  _updateHeads(dt) {
+    const k = 1 - Math.pow(0.0015, dt); // なめらかに追従
+    for (const st of this.seats.values()) {
+      if (st.empty) continue;
+      const tgt = st.alive ? st.look : { y: 0, p: 0 };
+      st.lookCur.y += (tgt.y - st.lookCur.y) * k;
+      st.lookCur.p += (tgt.p - st.lookCur.p) * k;
+      // 首が65%、上半身が35%ひねる
+      st.head.rotation.y = st.lookCur.y * 0.65;
+      st.head.rotation.x = -st.lookCur.p * 0.85;
+      if (st.alive) st.body.rotation.y = st.lookCur.y * 0.35;
+    }
   }
 
   _updateLabels() {
@@ -718,7 +763,7 @@ export class TableScene {
     const v = new THREE.Vector3();
     for (const st of this.seats.values()) {
       if (st.label.style.display === 'none') continue;
-      st.head.getWorldPosition(v); v.y += 0.42;
+      st.head.getWorldPosition(v); v.y += this.labelLift ?? 0.42;
       v.project(this.camera);
       if (v.z > 1 || v.z < -1) { st.label.style.visibility = 'hidden'; continue; }
       st.label.style.visibility = '';

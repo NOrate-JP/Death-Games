@@ -82,7 +82,15 @@ export class FirebaseRoom {
     });
     return ok;
   }
-  leave() { this._conn && this._conn(); return this.removeMember(this.uid).catch(() => {}); }
+  // 首の向き：部屋データとは別の場所（looks/部屋コード）に置き、ゲームの同期に負荷をかけない
+  lr(p = '') { return this.api.ref(this.f.db, `looks/${this.code}${p ? '/' + p : ''}`); }
+  setLook(uid, v) {
+    if (!this._lookOD) { this._lookOD = true; this.api.onDisconnect(this.lr(uid)).remove(); }
+    return this.api.set(this.lr(uid), v).catch(() => {});
+  }
+  subscribeLooks(cb) { this.unsubscribeLooks(); this._lu = this.api.onValue(this.lr(), (snap) => cb(snap.val() || {})); }
+  unsubscribeLooks() { this._lu && this._lu(); this._lu = null; }
+  leave() { this._conn && this._conn(); this.api.remove(this.lr(this.uid)).catch(() => {}); return this.removeMember(this.uid).catch(() => {}); }
 }
 
 // ---- オフライン（CPU練習） ----
@@ -119,5 +127,8 @@ export class LocalRoom {
     this.data.game = { json: JSON.stringify(m), eid: m.eid }; this.emit();
     return true;
   }
+  setLook() {}
+  subscribeLooks() {}
+  unsubscribeLooks() {}
   leave() {}
 }

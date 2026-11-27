@@ -328,11 +328,48 @@ const App = {
       sc.setView(alive ? { kind: 'seat', uid: me } : { kind: 'overview' }, true);
     }
     this.renderCamBar(m);
+    this.startLookSync();
     if (!fresh) this.afterIdle();
+  },
+
+  // ---------- 首の向きの同期 ----------
+  startLookSync() {
+    this.stopLookSync();
+    let last = null, lastAt = 0;
+    // 自分のカメラの向きを送る（変化した時だけ、最大 約7回/秒）
+    this._lookSend = setInterval(() => {
+      const l = this.scene?.myLook(); if (!l || !this.room) return;
+      const now = Date.now();
+      if (last && Math.abs(l.y - last.y) < 0.03 && Math.abs(l.p - last.p) < 0.03 && now - lastAt < 4000) return;
+      last = l; lastAt = now;
+      this.room.setLook(this.uid, { y: Math.round(l.y * 1000) / 1000, p: Math.round(l.p * 1000) / 1000 });
+    }, 140);
+    // 他プレイヤーの向きを受け取る
+    this.room.subscribeLooks((map) => {
+      for (const [u, v] of Object.entries(map)) if (u !== this.uid && v && !this.match?.cpu?.[u]) this.scene?.setSeatLook(u, v.y, v.p);
+    });
+    // CPUの首：手番の人を見る／ときどき視線を外す（各端末で個別に動かす）
+    this._cpuLook = setInterval(() => {
+      const m = this.match, sc = this.scene; if (!m || !sc) return;
+      const actor = currentActor(m) || m.loser?.uid || null;
+      for (const u of m.seats) {
+        if (!m.cpu[u] || !m.alive[u]) continue;
+        let l;
+        if (Math.random() < 0.08) l = { y: (Math.random() - 0.5) * 1.6, p: (Math.random() - 0.6) * 0.5 };
+        else if (!actor || actor === u) l = { y: (Math.random() - 0.5) * 0.3, p: -0.45 + Math.random() * 0.1 };
+        else { l = sc.lookToward(u, sc.headPos(actor)); if (l) { l.y += (Math.random() - 0.5) * 0.12; l.p += (Math.random() - 0.5) * 0.08; } }
+        if (l && Math.random() < 0.6) sc.setSeatLook(u, l.y, l.p);
+      }
+    }, 450);
+  },
+  stopLookSync() {
+    clearInterval(this._lookSend); clearInterval(this._cpuLook);
+    this.room?.unsubscribeLooks?.();
   },
 
   teardownGame() {
     clearTimeout(this._autoT);
+    this.stopLookSync();
     this.view?.dispose(); this.view = null;
     this.scene?.dispose(); this.scene = null;
     this.match = null; this.queue = []; this.busy = false;

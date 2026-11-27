@@ -441,7 +441,8 @@ input { background: #120a08; border: 2px solid var(--line); color: var(--text); 
 .is-bid small { color: var(--dim); }
 .is-bid .none { color: var(--dim); }
 .is-deck { font-size: 12px; color: var(--gold); text-shadow: 1px 1px 0 #000; }
-.is-seen { position: absolute; left: 14px; top: 110px; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,.55); border: 1px solid var(--line); padding: 6px 8px; pointer-events: none; }
+.is-seen { position: absolute; left: 14px; top: 110px; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,.55); border: 1px solid var(--line); padding: 6px 8px; }
+.is-tog { background: transparent; border: 1px solid var(--line); color: var(--dim); font-size: 11px; padding: 2px 6px; cursor: pointer; }
 .is-seen:empty { display: none; }
 .is-sh { font-size: 11px; color: var(--gold); letter-spacing: .1em; }
 .is-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
